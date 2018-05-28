@@ -14,15 +14,32 @@
 #include <strings.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <termbox.h>
+#include <unistd.h>
 
-void cleanup(out123_handle *ao)
+out123_handle *ao = NULL;
+
+void die(const char * const s)
 {
-    out123_del(ao);
+    fputs(s, stderr);
+    exit(1);
 }
 
-int main(void)
+void tb_puts(int x, int y, const char *s)
 {
-    out123_handle *ao = NULL;
+    struct tb_cell cell;
+    cell.fg = TB_DEFAULT;
+    cell.bg = TB_DEFAULT;
+
+    char c;
+    for (int i = 0; (c = s[i]); i++) {
+        cell.ch = c;
+        tb_put_cell(x + i, y, &cell);
+    }
+}
+
+int audio(void)
+{
     char *infile = NULL;
 
     const char *encname = "s16";
@@ -48,7 +65,7 @@ int main(void)
     ao = out123_new();
     if (!ao) {
         fprintf(stderr, "Cannot create output handle.\n");
-        cleanup(ao);
+        out123_del(ao);
         return -1;
     }
 
@@ -56,14 +73,14 @@ int main(void)
     int encoding = out123_enc_byname(encname);
     if (!encoding) {
         fprintf(stderr, "No such encoding %s!\n", encname);
-        cleanup(ao);
+        out123_del(ao);
         return -1;
     }
 
     int err = out123_open(ao, driver, outfile);
     if (err) {
         fprintf(stderr, "Trouble with out123: %s\n", out123_strerror(ao));
-        cleanup(ao);
+        out123_del(ao);
         return -1;
     }
 
@@ -78,7 +95,7 @@ int main(void)
     int framesize;
     if (out123_start(ao, rate, channels, encoding) || out123_getformat(ao, NULL, NULL, NULL, &framesize)) {
         fprintf(stderr, "Cannot start output / get framesize: %s\n", out123_strerror(ao));
-        cleanup(ao);
+        out123_del(ao);
         return -1;
     }
     fprintf(stderr, "Framesize is %d\n", framesize);
@@ -107,6 +124,88 @@ int main(void)
     free(buffer);
 
     printf("%li samples written.\n", (long) samples);
-    cleanup(ao);
+    out123_del(ao);
     return 0;
+}
+
+int main(void)
+{
+    int err = tb_init();
+    if (err) {
+        die("Termbox failed to initialize\n");
+    }
+
+    if (tb_width() < 80 || tb_height() < 24) {
+        tb_shutdown();
+        die("Too small--we need at least 80x24\n");
+    }
+
+    int line = 0, col = 0;
+
+    tb_present();
+
+    for (;;) {
+
+        struct tb_event event;
+        int err = tb_poll_event(&event);
+        if (err < 0) {
+            tb_shutdown();
+            die("event error\n");
+        }
+
+        if (event.type != TB_EVENT_KEY)
+            continue;
+
+        if (!event.ch) {
+            switch (event.key) {
+            case TB_KEY_ESC:
+            case TB_KEY_CTRL_C:
+                event.ch = 'q';
+                break;
+            case TB_KEY_ARROW_LEFT:
+                event.ch = 'h';
+                break;
+            case TB_KEY_ARROW_DOWN:
+                event.ch = 'j';
+                break;
+            case TB_KEY_ARROW_UP:
+                event.ch = 'k';
+                break;
+            case TB_KEY_ARROW_RIGHT:
+                event.ch = 'l';
+                break;
+            case TB_KEY_ENTER:
+                if (!fork())
+                    exit(audio());
+                break;
+            }
+        }
+
+        switch (event.ch) {
+        case 'q':
+        case 'Q':
+            tb_shutdown();
+            return 0;
+        case 'h':
+            col--;
+            if (col < 0)
+                col = 0;
+            break;
+        case 'j':
+            line++;
+            break;
+        case 'k':
+            line--;
+            if (line < 0)
+                line = 0;
+            break;
+        case 'l':
+            col++;
+            break;
+        }
+
+
+        tb_puts(col, line, "le bac: the badge audio composer");
+        tb_present();
+    }
 }
