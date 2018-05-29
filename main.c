@@ -1,8 +1,7 @@
 /* le bac: the badge audio composer
- * all bugs are qguv's fault
- * requires libout123 (mpg123) and termbox (included) */
+ * all bugs are qguv's fault */
 
-#include <out123.h>
+#include "notes.h"
 
 #include <stdio.h>
 #include <strings.h>
@@ -13,10 +12,13 @@
 
 /* set only if your audio driver needs tweaking */
 #define DRIVER NULL
-#define ENCODING "s16";
+#define ENCODING "s16"
 
 /* badge audio rate */
 #define RATE 38000L
+
+/* more mercy == less volume */
+#define MERCY 4
 
 struct line_t {
     char note;
@@ -25,6 +27,7 @@ struct line_t {
 struct line_t pattern[16];
 
 int current_line = 0;
+int tempo = 128;
 
 void die(const char * const s)
 {
@@ -32,95 +35,89 @@ void die(const char * const s)
     exit(1);
 }
 
-void tb_puts(int x, int y, const char *s)
+void tb_puts(const char *s, struct tb_cell *cell, int x, int y)
 {
-    struct tb_cell cell;
-    cell.fg = TB_DEFAULT;
-    cell.bg = TB_DEFAULT;
-
     char c;
     for (int i = 0; (c = s[i]); i++) {
-        cell.ch = c;
-        tb_put_cell(x + i, y, &cell);
+        cell->ch = c;
+        tb_put_cell(x + i, y, cell);
     }
 }
 
-int audio(void)
+int audio_child(void)
 {
-    out123_handle *ao = NULL;
-
-    /* s16 since it's the cheapest, but we're really only using INT16_MAX, 0,
-     * and INT16_MIN */
-    const char *encname = ENCODING
-    const int channels = 1;
-
-    int mercy = 3;
-
-    char *driver = DRIVER;
-
-    int16_t *buffer = NULL;
-
-    /* initialize out123 */
-    ao = out123_new();
-    if (!ao) {
-        fprintf(stderr, "out123_new() died, is audio set up on this system?\n");
-        out123_del(ao);
-        return 1;
-    }
-
-    /* check that the encoding is supported */
-    int encid = out123_enc_byname(encname);
-    if (!encid) {
-        fprintf(stderr, "encoding %s not supported by the default audio driver on this system. choose a better one!\n", encname);
-        out123_del(ao);
-        return 1;
-    }
-
-    int err = out123_open(ao, driver, NULL);
+    /* set up pipes to communicate with audio child */
+    int pipefd[2];
+    int err = pipe(pipefd);
     if (err) {
-        fprintf(stderr, "out123_open() died, saying \"%s\"\n", out123_strerror(ao));
-        out123_del(ao);
-        return 1;
+        fputs("couldn't create a pipe\n", stderr);
+        exit(1);
     }
 
-    out123_driver_info(ao, &driver, NULL);
-    printf("Effective output driver: %s\n", driver ? driver : "<nil> (default)");
-    printf("Playing with %i channels and %li Hz, encoding %s.\n", channels, RATE, encname ? encname : "???");
-
-    int framesize;
-    if (out123_start(ao, RATE, channels, encid) || out123_getformat(ao, NULL, NULL, NULL, &framesize)) {
-        fprintf(stderr, "Cannot start output / get framesize: %s\n", out123_strerror(ao));
-        out123_del(ao);
-        return 1;
+    /* spin off a child to produce the audio */
+    int pid = fork();
+    if (!pid) {
+        close(pipefd[1]);
+        close(STDIN_FILENO);
+        dup(pipefd[0]);
+        close(pipefd[0]);
+        execlp("out123", "--encoding", "s16", "--rate", "RATE", "--buffer", "8", NULL);
     }
-    fprintf(stderr, "Framesize is %d\n", framesize);
 
-    buffer = malloc(RATE);
+    close(pipefd[0]);
+    return pipefd[1];
+}
 
-    off_t samples = 0;
-    do {
-        long wavelength = RATE / 440;
-        long duty = wavelength >> 1;
-        for (int i = 0; i < duty; i++)
-            buffer[i] = INT16_MAX >> mercy;
-        for (int i = duty; i < wavelength; i++)
-            buffer[i] = INT16_MIN >> mercy;
+void audio(void)
+{
+    int audio_pipe = audio_child();
 
-        size_t bytes_to_play = wavelength * framesize;
-        size_t played = out123_play(ao, buffer, bytes_to_play);
-        if (played != bytes_to_play)
-        {
-            fprintf(stderr, "Warning: some buffer remains after writing: %li != %li\n", (long) played, (long) bytes_to_play);
+    long buf_used = 0;
+    const long buf_size = RATE << 1;
+    int16_t *buf;
+    buf = malloc(RATE << 1);
+
+    int err;
+
+    long samples_per_step = (double) RATE / (double) tempo / 60L + 0.5L;
+
+    long cycle_samples, half_cycle_samples, quarter_cycle_samples, three_quarter_cycle_samples;
+    for (int step = 0; step < 16; step++) {
+
+        /* will this step fit? if not, flush */
+        if (buf_used + samples_per_step > buf_size) {
+            err = write(audio_pipe, buf, buf_used);
+            if (err) {
+                fputs("audio pipe write failed\n", stderr);
+                return;
+            }
+            buf_used = 0;
         }
 
-        samples += played / framesize;
-    } while (samples < RATE * 5);
+        char note = pattern[step].note;
+        if (note) {
+            double freq = note_freqs[note % 12];
+            for (int i = 0; i < note / 12; i++)
+                freq *= 2; // wasting some cycles to get this right; errors accumulate
+            cycle_samples = (long) RATE / (long) freq + 0.5L;
+            half_cycle_samples = cycle_samples >> 1;
+            quarter_cycle_samples = half_cycle_samples >> 1; // FIXME just 50% duty cycle for now
+            three_quarter_cycle_samples = half_cycle_samples + quarter_cycle_samples;
+        }
 
-    free(buffer);
+        for (int sample = 0; sample < samples_per_step; sample++) {
+            if (sample < quarter_cycle_samples) {
+                buf[buf_used++] = INT16_MAX >> MERCY;
+            } else if (sample >= half_cycle_samples && sample < three_quarter_cycle_samples) {
+                buf[buf_used++] = INT16_MIN >> MERCY;
+            } else {
+                buf[buf_used++] = 0;
+            }
+        }
+    }
+    write(audio_pipe, buf, buf_used);
 
-    printf("%li samples written.\n", (long) samples);
-    out123_del(ao);
-    return 0;
+    free(buf);
 }
 
 void deconstruct_note(const struct line_t * const line, char * const note_name, char * const accidental, char * const octave)
@@ -137,7 +134,7 @@ void deconstruct_note(const struct line_t * const line, char * const note_name, 
 
     *note_name  = "bccddeffggaa"[line->note % 12];
     *accidental = "  # #  # # #"[line->note % 12];
-    *octave = "1234567"[line->note / 12];
+    *octave = "234567"[line->note / 12];
 }
 
 void draw_note_column(void)
@@ -175,11 +172,22 @@ void draw_note_column(void)
             tb_put_cell(5, row + 3, &dark);
         }
 
-        black.ch = (row == current_line) ? '-' : ' ';
+        black.ch = (row == current_line) ? '-' : "0123456789abcdef"[row];
         tb_put_cell(0, row + 3, &black);
         black.ch = (row == current_line) ? '>' : ' ';
         tb_put_cell(1, row + 3, &black);
     }
+}
+
+void draw_tempo(void)
+{
+    struct tb_cell cell;
+    cell.fg = TB_BLACK | TB_BOLD;
+    cell.bg = TB_MAGENTA;
+
+    char s[4];
+    snprintf(s, sizeof(s), "%3d", tempo);
+    tb_puts(s, &cell, 1, 1);
 }
 
 int main(void)
@@ -189,23 +197,25 @@ int main(void)
         die("Termbox failed to initialize\n");
     }
 
-    if (tb_width() < 80 || tb_height() < 24) {
-        tb_shutdown();
-        die("Too small--we need at least 80x24\n");
-    }
+    struct tb_event event;
 
     char last_edit = 25;
 
+    struct tb_cell cell;
+    cell.fg = TB_DEFAULT;
+    cell.bg = TB_DEFAULT;
+
 full_redraw:
+
     tb_clear();
-    tb_puts(3, 1, "le bac: the badge audio composer");
+    draw_tempo();
+    tb_puts("le bac: the badge audio composer", &cell, 5, 1);
     draw_note_column();
     tb_present();
 
     for (;;) {
 
-        struct tb_event event;
-        int err = tb_poll_event(&event);
+        err = tb_poll_event(&event);
         if (err < 0) {
             tb_shutdown();
             die("event error\n");
@@ -241,8 +251,8 @@ full_redraw:
                 break;
 
             case TB_KEY_ENTER:
-                if (!fork())
-                    exit(audio());
+                //if (!fork())
+                audio();
                 break;
 
             /* toggle between this note and no note */
