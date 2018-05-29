@@ -15,7 +15,7 @@
 #define ENCODING "s16"
 
 /* badge audio rate */
-#define RATE 38000L
+#define RATE 38000
 
 /* more mercy == less volume */
 #define MERCY 4
@@ -28,6 +28,8 @@ struct line_t pattern[16];
 
 int current_line = 0;
 int tempo = 128;
+
+int pipefd[2];
 
 void die(const char * const s)
 {
@@ -44,6 +46,19 @@ void tb_puts(const char *s, struct tb_cell *cell, int x, int y)
     }
 }
 
+void debug(const char *s)
+{
+    static int y = 3;
+
+    struct tb_cell c;
+    c.fg = TB_DEFAULT;
+    c.bg = TB_DEFAULT;
+
+    tb_puts(s, &c, 10, y++);
+    if (y == 40)
+        y = 3;
+}
+
 int audio_child(void)
 {
     /* set up pipes to communicate with audio child */
@@ -56,12 +71,11 @@ int audio_child(void)
 
     /* spin off a child to produce the audio */
     int pid = fork();
-    if (!pid) {
+    if (pid == 0) {
         close(pipefd[1]);
-        close(STDIN_FILENO);
-        dup(pipefd[0]);
+        dup2(pipefd[0], STDIN_FILENO);
         close(pipefd[0]);
-        execlp("out123", "--encoding", "s16", "--rate", "RATE", "--buffer", "8", NULL);
+        execlp("out123", "out123", "--mono", "--encoding", "s16", "--rate", "38000", (char *) NULL);
     }
 
     close(pipefd[0]);
@@ -72,52 +86,37 @@ void audio(void)
 {
     int audio_pipe = audio_child();
 
-    long buf_used = 0;
-    const long buf_size = RATE << 1;
-    int16_t *buf;
-    buf = malloc(RATE << 1);
+    int samples_per_step = RATE * 15 / tempo;
 
-    int err;
-
-    long samples_per_step = (double) RATE / (double) tempo / 60L + 0.5L;
-
-    long cycle_samples, half_cycle_samples, quarter_cycle_samples, three_quarter_cycle_samples;
+    int cycle_samples, half_cycle_samples, quarter_cycle_samples, three_quarter_cycle_samples;
     for (int step = 0; step < 16; step++) {
-
-        /* will this step fit? if not, flush */
-        if (buf_used + samples_per_step > buf_size) {
-            err = write(audio_pipe, buf, buf_used);
-            if (err) {
-                fputs("audio pipe write failed\n", stderr);
-                return;
-            }
-            buf_used = 0;
-        }
 
         char note = pattern[step].note;
         if (note) {
             double freq = note_freqs[note % 12];
             for (int i = 0; i < note / 12; i++)
                 freq *= 2; // wasting some cycles to get this right; errors accumulate
-            cycle_samples = (long) RATE / (long) freq + 0.5L;
+            cycle_samples = (double) RATE / freq;
             half_cycle_samples = cycle_samples >> 1;
             quarter_cycle_samples = half_cycle_samples >> 1; // FIXME just 50% duty cycle for now
             three_quarter_cycle_samples = half_cycle_samples + quarter_cycle_samples;
         }
 
-        for (int sample = 0; sample < samples_per_step; sample++) {
-            if (sample < quarter_cycle_samples) {
-                buf[buf_used++] = INT16_MAX >> MERCY;
-            } else if (sample >= half_cycle_samples && sample < three_quarter_cycle_samples) {
-                buf[buf_used++] = INT16_MIN >> MERCY;
+        for (int i = 0; i < samples_per_step; i++) {
+            int pos = i % cycle_samples;
+            int16_t sample;
+            if (pos < quarter_cycle_samples) {
+                sample = INT16_MAX >> MERCY;
+            } else if (pos >= half_cycle_samples && pos < three_quarter_cycle_samples) {
+                sample = INT16_MIN >> MERCY;
             } else {
-                buf[buf_used++] = 0;
+                sample = 0;
             }
+            write(audio_pipe, (char *) &sample, sizeof(sample));
         }
     }
-    write(audio_pipe, buf, buf_used);
 
-    free(buf);
+    close(audio_pipe);
 }
 
 void deconstruct_note(const struct line_t * const line, char * const note_name, char * const accidental, char * const octave)
@@ -251,8 +250,10 @@ full_redraw:
                 break;
 
             case TB_KEY_ENTER:
-                //if (!fork())
-                audio();
+                if (!fork()) {
+                    audio();
+                    exit(0);
+                }
                 break;
 
             /* toggle between this note and no note */
