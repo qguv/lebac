@@ -4,13 +4,15 @@
 #include "notes.h"
 #include "help.h"
 
-#include <stdio.h>
-#include <strings.h>
-#include <stdint.h>
-#include <stdlib.h>
 #include <termbox.h>
-#include <unistd.h>
-#include <time.h>
+
+#include <fcntl.h> // open()
+#include <stdint.h> // int16_t
+#include <stdio.h> // snprintf, fputs (errors)
+#include <stdlib.h> // exit
+//#include <strings.h>
+#include <time.h> // clock_gettime
+#include <unistd.h> // pipe, fork, close, dup, exec, ...
 
 /* set only if your audio driver needs tweaking */
 #define DRIVER NULL
@@ -46,6 +48,9 @@ int current_line = 0;
 
 unsigned char tempo = 128;
 
+/* default colors */
+struct tb_cell dcell;
+
 void die(const char * const s)
 {
     fputs(s, stderr);
@@ -65,11 +70,7 @@ void debug(const char *s)
 {
     static int y = 3;
 
-    struct tb_cell c;
-    c.fg = TB_DEFAULT;
-    c.bg = TB_DEFAULT;
-
-    tb_puts(s, &c, 10, y++);
+    tb_puts(s, &dcell, 10, y++);
     if (y == 40)
         y = 3;
 }
@@ -183,10 +184,6 @@ void draw_note_columns(enum column_t column)
     dark.fg = TB_DEFAULT;
     dark.bg = TB_BLACK;
 
-    struct tb_cell black;
-    black.fg = TB_DEFAULT;
-    black.bg = TB_DEFAULT;
-
     struct tb_cell *cell;
 
     char note_name, accidental, octave, lpnote_name, lpaccidental, lpoctave;
@@ -218,18 +215,18 @@ void draw_note_columns(enum column_t column)
         const char left_arrow = is_current_line && column == NOTE;
         const char right_arrow = is_current_line && column == LPNOTE;
 
-        black.ch = (left_arrow) ? '-' : "0123456789abcdef"[row];
-        tb_put_cell(0, row + 3, &black);
+        dcell.ch = (left_arrow) ? '-' : "0123456789abcdef"[row];
+        tb_put_cell(0, row + 3, &dcell);
 
         /* arrow blits over line number */
-        black.ch = (left_arrow) ? '>' : ' ';
-        tb_put_cell(1, row + 3, &black);
+        dcell.ch = (left_arrow) ? '>' : ' ';
+        tb_put_cell(1, row + 3, &dcell);
 
         /* right arrow */
-        black.ch = (right_arrow) ? '<': ' ';
-        tb_put_cell(11, row + 3, &black);
-        black.ch = (right_arrow) ? '-': ' ';
-        tb_put_cell(12, row + 3, &black);
+        dcell.ch = (right_arrow) ? '<': ' ';
+        tb_put_cell(11, row + 3, &dcell);
+        dcell.ch = (right_arrow) ? '-': ' ';
+        tb_put_cell(12, row + 3, &dcell);
     }
 }
 
@@ -269,15 +266,47 @@ void draw_help(void)
 
 void draw_not_quit(void)
 {
-    struct tb_cell cell;
-    cell.fg = TB_DEFAULT;
-    cell.bg = TB_DEFAULT;
-
-    tb_puts("the quit key is ctrl-c  ", &cell, 17, 1);
+    tb_puts("the quit key is ctrl-c  ", &dcell, 17, 1);
 }
 
-int main(void)
+void save(char *songfile)
 {
+    /* TODO allow filenames to be specified at save */
+    int fd = open(songfile, O_CREAT | O_RDWR);
+    if (fd < 0) {
+        tb_puts("no permissions for      ", &dcell, 17, 1);
+        tb_puts(songfile, &dcell, 36, 1);
+        return;
+    }
+
+    int to_write = sizeof(pattern);
+    while (to_write > 0)
+        to_write -= write(fd, (char *) pattern, sizeof(pattern));
+    close(fd);
+}
+
+void load(char *songfile)
+{
+    /* FIXME detect malformatted files */
+    /* TODO allow filenames to be specified at load */
+    int fd = open(songfile, O_RDONLY);
+    if (fd < 0) {
+        tb_puts("no permissions for      ", &dcell, 17, 1);
+        tb_puts(songfile, &dcell, 36, 1);
+        return;
+    }
+
+    int i = 0;
+    while (i < (int) sizeof(pattern))
+        i += read(fd, &pattern[i], sizeof(pattern) - i);
+}
+
+int main(int argc, char *argv[])
+{
+    if (argc != 2)
+        die("Usage: lebac [file]\n");
+    char *songfile = argv[1];
+
     int err = tb_init();
     if (err) {
         die("Termbox failed to initialize\n");
@@ -293,9 +322,8 @@ int main(void)
     enum redraw redraw_setting = FULL;
     enum global_mode_t global_mode = SEQUENCER;
 
-    struct tb_cell cell;
-    cell.fg = TB_DEFAULT;
-    cell.bg = TB_DEFAULT;
+    dcell.fg = TB_DEFAULT;
+    dcell.bg = TB_DEFAULT;
 
     char quit_request = 0;
 
@@ -311,7 +339,7 @@ int main(void)
                 draw_tempo();
             else if (global_mode == HELP)
                 draw_help();
-            tb_puts("le bac / the badge audio composer", &cell, 8, 1);
+            tb_puts("le bac / the badge audio composer", &dcell, 8, 1);
         }
 
         if (global_mode == SEQUENCER) {
@@ -325,7 +353,7 @@ int main(void)
 
         err = tb_poll_event(&event);
         if (err < 0)
-            tb_puts("termbox event error :(  ", &cell, 17, 1);
+            tb_puts("termbox event error :(  ", &dcell, 17, 1);
 
         if (event.type == TB_EVENT_RESIZE) {
             redraw_setting = FULL;
@@ -337,6 +365,7 @@ int main(void)
 
         /* help mode handles keys differently */
         if (global_mode == HELP) {
+            quit_request = 0;
             global_mode = SEQUENCER;
             redraw_setting = FULL;
             continue;
@@ -351,7 +380,7 @@ int main(void)
             }
 
             /* quit request issued? */
-            tb_puts("press again to quit     ", &cell, 17, 1);
+            tb_puts("press again to quit     ", &dcell, 17, 1);
             quit_request = 1;
             continue;
 
@@ -396,6 +425,7 @@ int main(void)
 
             case TB_KEY_BACKSPACE2:
             case TB_KEY_DELETE:
+                last_edit = *edit_note;
                 *edit_note = 0;
                 break;
             }
@@ -515,7 +545,18 @@ int main(void)
         case '?':
             global_mode = HELP;
             redraw_setting = FULL;
-            quit_request = 0;
+            break;
+
+        case 'S':
+            save(songfile);
+            tb_puts("saved to                ", &dcell, 17, 1);
+            tb_puts(songfile, &dcell, 26, 1);
+            break;
+
+        case 'D':
+            load(songfile);
+            tb_puts("loaded                  ", &dcell, 17, 1);
+            tb_puts(songfile, &dcell, 24, 1);
             break;
         }
     }
