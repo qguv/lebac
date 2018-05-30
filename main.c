@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <termbox.h>
 #include <unistd.h>
+#include <time.h>
 
 /* set only if your audio driver needs tweaking */
 #define DRIVER NULL
@@ -20,6 +21,10 @@
 /* more mercy == less volume */
 #define MERCY 4
 
+#define TEMPO_MAX 200
+#define TEMPO_MIN 20
+#define TEMPO_JUMP 10
+
 struct line_t {
     char note;
 };
@@ -27,9 +32,8 @@ struct line_t {
 struct line_t pattern[16];
 
 int current_line = 0;
-int tempo = 128;
 
-int pipefd[2];
+int tempo = 128;
 
 void die(const char * const s)
 {
@@ -59,11 +63,11 @@ void debug(const char *s)
         y = 3;
 }
 
-int audio_child(void)
+int audio_child(int *pid_p)
 {
     /* set up pipes to communicate with audio child */
-    int pipefd[2];
-    int err = pipe(pipefd);
+    int pipefds[2];
+    int err = pipe(pipefds);
     if (err) {
         fputs("couldn't create a pipe\n", stderr);
         exit(1);
@@ -72,20 +76,20 @@ int audio_child(void)
     /* spin off a child to produce the audio */
     int pid = fork();
     if (pid == 0) {
-        close(pipefd[1]);
-        dup2(pipefd[0], STDIN_FILENO);
-        close(pipefd[0]);
+        close(pipefds[1]);
+        dup2(pipefds[0], STDIN_FILENO);
+        close(pipefds[0]);
         execlp("out123", "out123", "--mono", "--encoding", "s16", "--rate", "38000", (char *) NULL);
     }
+    if (pid_p != NULL)
+        *pid_p = pid;
 
-    close(pipefd[0]);
-    return pipefd[1];
+    close(pipefds[0]);
+    return pipefds[1];
 }
 
-void audio(void)
+void audio(int audio_pipe)
 {
-    int audio_pipe = audio_child();
-
     int samples_per_step = RATE * 15 / tempo;
 
     int cycle_samples, half_cycle_samples, quarter_cycle_samples, three_quarter_cycle_samples;
@@ -183,12 +187,16 @@ void draw_note_column(void)
 void draw_tempo(void)
 {
     struct tb_cell cell;
-    cell.fg = TB_BLACK | TB_BOLD;
-    cell.bg = TB_MAGENTA;
+    cell.fg = TB_DEFAULT | TB_BOLD;
+    cell.bg = TB_DEFAULT;
 
     char s[4];
+    snprintf(s, sizeof(s), "T:");
+    tb_puts(s, &cell, 0, 1);
+
+    cell.bg = TB_MAGENTA;
     snprintf(s, sizeof(s), "%3d", tempo);
-    tb_puts(s, &cell, 1, 1);
+    tb_puts(s, &cell, 3, 1);
 }
 
 int main(void)
@@ -198,6 +206,9 @@ int main(void)
         die("Termbox failed to initialize\n");
     }
 
+    struct timespec tempo_input, last_tempo_input;
+    last_tempo_input.tv_sec = 0;
+
     struct tb_event event;
 
     char last_edit = 25;
@@ -206,29 +217,34 @@ int main(void)
     cell.fg = TB_DEFAULT;
     cell.bg = TB_DEFAULT;
 
-full_redraw:
-
-    tb_clear();
-    draw_tempo();
-    tb_puts("le bac: the badge audio composer", &cell, 5, 1);
-    draw_note_column();
-    tb_present();
+    char quit_request = 0;
+    char full_redraw = 1;
 
     for (;;) {
+        if (full_redraw) {
+            tb_clear();
+            draw_tempo();
+            tb_puts("le bac / the badge audio composer", &cell, 8, 1);
+            full_redraw = 0;
+        }
+
+        draw_note_column();
+        tb_present();
 
         err = tb_poll_event(&event);
         if (err < 0) {
+            /* TODO handle more gracefully */
             tb_shutdown();
             die("event error\n");
         }
 
-        if (event.type == TB_EVENT_RESIZE)
-            goto full_redraw;
+        if (event.type == TB_EVENT_RESIZE) {
+            full_redraw = 1;
+            continue;
+        }
 
         if (event.type == TB_EVENT_MOUSE)
             continue;
-
-        char this_note;
 
         if (!event.ch) {
             switch (event.key) {
@@ -236,7 +252,7 @@ full_redraw:
             /* aliases for characters */
             case TB_KEY_ESC:
             case TB_KEY_CTRL_C:
-                event.ch = 'q';
+                event.ch = 'Q';
                 break;
             case TB_KEY_ARROW_LEFT:
                 event.ch = 'h';
@@ -253,22 +269,12 @@ full_redraw:
 
             case TB_KEY_ENTER:
                 if (!fork()) {
-                    audio();
+                    /* TODO: send SIGTERM when parent dies */
+                    int audio_pipe = audio_child(NULL);
+                    audio(audio_pipe);
                     exit(0);
                 }
                 break;
-
-            /* toggle between this note and no note */
-            case TB_KEY_SPACE:
-                this_note = pattern[current_line].note;
-
-                if (this_note == 0) {
-                    pattern[current_line].note = last_edit;
-                    break;
-                }
-
-                last_edit = pattern[current_line].note;
-                /* fallthrough */
 
             case TB_KEY_BACKSPACE2:
             case TB_KEY_DELETE:
@@ -277,39 +283,129 @@ full_redraw:
             }
         }
 
-        switch (event.ch) {
-        case 'q':
-        case 'Q':
-            tb_shutdown();
-            return 0;
-        case 'h':
-            this_note = pattern[current_line].note;
-            if (this_note == 0)
-                pattern[current_line].note = last_edit;
-            else if (this_note > 1)
-                last_edit = --pattern[current_line].note;
-            break;
-        case 'j':
-            current_line++;
-            break;
-        case 'k':
-            current_line--;
-            break;
-        case 'l':
-            this_note = pattern[current_line].note;
-            if (this_note == 0)
-                pattern[current_line].note = last_edit;
-            else if (this_note < 63)
-                last_edit = ++pattern[current_line].note;
-            break;
+        if (event.ch == 'Q') {
+
+            /* quit request confirmed? */
+            if (quit_request) {
+                tb_shutdown();
+                return 0;
+            }
+
+            /* quit request issued? */
+            tb_puts("press again to quit     ", &cell, 17, 1);
+            quit_request = 1;
+            continue;
+
+        /* quit request cancelled? */
+        } else if (quit_request) {
+            full_redraw = 1;
+            quit_request = 0;
         }
 
-            if (current_line > 15)
-                current_line = 0;
-            else if (current_line < 0)
-                current_line = 15;
+        switch (event.ch) {
 
-        draw_note_column();
-        tb_present();
+        case 'C':
+            for (int i = 0; i < 16; i++)
+                pattern[i].note = 0;
+            break;
+
+        /* tap tempo */
+        case 'T':
+            clock_gettime(CLOCK_REALTIME, &tempo_input);
+
+            if (last_tempo_input.tv_sec != 0) {
+                double x = (double) (tempo_input.tv_sec & 0xffff) - (double) (last_tempo_input.tv_sec & 0xffff);
+                x += (tempo_input.tv_nsec - last_tempo_input.tv_nsec) * 1e-9;
+                tempo = 60.0L / x + 0.5;
+                if (tempo < 20)
+                    tempo = 20;
+                if (tempo > 200)
+                    tempo = 200;
+                draw_tempo();
+            }
+
+            last_tempo_input.tv_sec = tempo_input.tv_sec;
+            last_tempo_input.tv_nsec = tempo_input.tv_nsec;
+            break;
+
+        case 'H':
+            if (pattern[current_line].note == 0)
+                pattern[current_line].note = last_edit;
+
+            if (pattern[current_line].note < 13)
+                last_edit = pattern[current_line].note = 1;
+            else
+                last_edit = pattern[current_line].note -= 12;
+            break;
+
+        case 'h':
+            if (pattern[current_line].note == 0)
+                pattern[current_line].note = last_edit;
+
+            if (pattern[current_line].note > 1)
+                last_edit = --pattern[current_line].note;
+            break;
+
+        case 'j':
+            current_line++;
+            current_line %= 16;
+            break;
+
+        case 'k':
+            current_line += 15;
+            current_line %= 16;
+            break;
+
+        case 'l':
+            if (pattern[current_line].note == 0)
+                pattern[current_line].note = last_edit;
+
+            if (pattern[current_line].note < 63)
+                last_edit = ++pattern[current_line].note;
+            break;
+
+        case 'L':
+            if (pattern[current_line].note == 0)
+                pattern[current_line].note = last_edit;
+
+            if (pattern[current_line].note > 51) {
+                last_edit = pattern[current_line].note = 63;
+            } else {
+                last_edit = pattern[current_line].note += 12;
+            }
+            break;
+
+        case '=':
+            if (tempo < TEMPO_MAX)
+                tempo++;
+            draw_tempo();
+            break;
+
+        case '-':
+            if (tempo > TEMPO_MIN)
+                tempo--;
+            draw_tempo();
+            break;
+
+        case '+':
+            if (tempo <= TEMPO_MAX - TEMPO_JUMP)
+                tempo += TEMPO_JUMP;
+            else
+                tempo = TEMPO_MAX;
+            draw_tempo();
+            break;
+
+        case '_':
+            if (tempo >= TEMPO_MIN + TEMPO_JUMP)
+                tempo -= TEMPO_JUMP;
+            else
+                tempo = TEMPO_MIN;
+            draw_tempo();
+            break;
+
+        case '.':
+            pattern[current_line].note = last_edit;
+            break;
+        }
     }
 }
