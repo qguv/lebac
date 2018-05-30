@@ -26,19 +26,25 @@
 #define TEMPO_MIN 16
 #define TEMPO_JUMP 10
 
+#define QUANTIZE(X, MINVAL, MAXVAL) (\
+    ((X) == 0) ? 0 : \
+    ((X) > 0) ? (MAXVAL) : \
+    (MINVAL) \
+)
+
 struct line_t {
     char note;
+    char lpnote; /* low-priority note */
 };
 
-struct line_t pattern[16];
+enum column_t { NOTE, LPNOTE };
+enum global_mode_t { SEQUENCER, HELP };
+enum redraw { NORMAL, FULL };
 
+struct line_t pattern[16];
 int current_line = 0;
 
 unsigned char tempo = 128;
-
-enum redraw { NORMAL, FULL };
-
-enum global_mode_t { SEQUENCER, HELP };
 
 void die(const char * const s)
 {
@@ -93,36 +99,56 @@ int audio_child(int *pid_p)
     return pipefds[1];
 }
 
+int samples_per_cycle(char note)
+{
+    double freq = note_freqs[note % 12];
+    for (int i = 0; i < note / 12; i++)
+        freq *= 2; /* wasting some cycles to get this right; errors accumulate */
+    return (double) RATE / freq + 0.5L;
+}
+
 void audio(int audio_pipe)
 {
     int samples_per_step = RATE * 15 / tempo;
 
-    int cycle_samples, half_cycle_samples, quarter_cycle_samples, three_quarter_cycle_samples;
+    int cycle_samples, half_cycle_samples, quarter_cycle_samples, three_quarter_cycle_samples,
+        lpcycle_samples, lphalf_cycle_samples, lpquarter_cycle_samples, lpthree_quarter_cycle_samples;
+
     for (int step = 0; step < 16; step++) {
 
         /* FIXME no-note cells should continue previous wave, not restart it */
 
-        char note = pattern[step].note;
+        char note = pattern[step].note,
+             lpnote = pattern[step].lpnote;
+
         if (note) {
-            double freq = note_freqs[note % 12];
-            for (int i = 0; i < note / 12; i++)
-                freq *= 2; /* wasting some cycles to get this right; errors accumulate */
-            cycle_samples = (double) RATE / freq + 0.5L;
+            cycle_samples = samples_per_cycle(note);
             half_cycle_samples = cycle_samples >> 1;
             quarter_cycle_samples = half_cycle_samples >> 1; /* FIXME just 50% duty cycle for now */
             three_quarter_cycle_samples = half_cycle_samples + quarter_cycle_samples;
         }
 
+        if (lpnote) {
+            lpcycle_samples = samples_per_cycle(lpnote);
+            lphalf_cycle_samples = lpcycle_samples >> 1;
+            lpquarter_cycle_samples = lphalf_cycle_samples >> 1; /* FIXME just 50% duty cycle for now */
+            lpthree_quarter_cycle_samples = lphalf_cycle_samples + lpquarter_cycle_samples;
+        }
+
         for (int i = 0; i < samples_per_step; i++) {
-            int pos = i % cycle_samples;
-            int16_t sample;
-            if (pos < quarter_cycle_samples) {
-                sample = INT16_MAX >> MERCY;
-            } else if (pos >= half_cycle_samples && pos < three_quarter_cycle_samples) {
-                sample = INT16_MIN >> MERCY;
-            } else {
-                sample = 0;
-            }
+            int pos = i % cycle_samples,
+                lppos = i % lpcycle_samples;
+
+            char note_level = (pos < quarter_cycle_samples) ? 1 :
+                              (pos >= half_cycle_samples && pos < three_quarter_cycle_samples) ? -1 :
+                              0;
+            char lpnote_level = (lppos < lpquarter_cycle_samples) ? 1 :
+                                (lppos >= lphalf_cycle_samples && lppos < lpthree_quarter_cycle_samples) ? -1 :
+                                0;
+
+            int16_t sample = QUANTIZE(note_level + lpnote_level, INT16_MIN >> MERCY, INT16_MAX >> MERCY);
+            //DEBUG int16_t sample = SIGN(note_level + lpnote_level) ? (INT16_MAX >> MERCY) : (INT16_MIN >> MERCY);
+            (void) note_level; // DEBUG
             write(audio_pipe, (char *) &sample, sizeof(sample));
         }
     }
@@ -147,10 +173,10 @@ void deconstruct_note(char note, char * const note_name, char * const accidental
     *octave = "234567"[(note - 1) / 12];
 }
 
-void draw_note_column(void)
+void draw_note_columns(enum column_t column)
 {
     struct tb_cell bright;
-    bright.fg = TB_BLACK;
+    bright.fg = TB_DEFAULT;
     bright.bg = TB_CYAN;
 
     struct tb_cell dark;
@@ -161,31 +187,49 @@ void draw_note_column(void)
     black.fg = TB_DEFAULT;
     black.bg = TB_DEFAULT;
 
-    char note_name, accidental, octave;
+    struct tb_cell *cell;
+
+    char note_name, accidental, octave, lpnote_name, lpaccidental, lpoctave;
     for (int row = 0; row < 16; row++) {
 
         deconstruct_note(pattern[row].note, &note_name, &accidental, &octave);
+        deconstruct_note(pattern[row].lpnote, &lpnote_name, &lpaccidental, &lpoctave);
 
-        if (row % 4 == 0) {
-            bright.ch = note_name;
-            tb_put_cell(3, row + 3, &bright);
-            bright.ch = accidental;
-            tb_put_cell(4, row + 3, &bright);
-            bright.ch = octave;
-            tb_put_cell(5, row + 3, &bright);
-        } else {
-            dark.ch = note_name;
-            tb_put_cell(3, row + 3, &dark);
-            dark.ch = accidental;
-            tb_put_cell(4, row + 3, &dark);
-            dark.ch = octave;
-            tb_put_cell(5, row + 3, &dark);
-        }
+        cell = (row % 4 == 0) ? &bright : &dark;
 
-        black.ch = (row == current_line) ? '-' : "0123456789abcdef"[row];
+        /* regular note column */
+        cell->ch = note_name;
+        tb_put_cell(3, row + 3, cell);
+        cell->ch = accidental;
+        tb_put_cell(4, row + 3, cell);
+        cell->ch = octave;
+        tb_put_cell(5, row + 3, cell);
+
+        /* low-priority column */
+        cell->ch = lpnote_name;
+        tb_put_cell(7, row + 3, cell);
+        cell->ch = lpaccidental;
+        tb_put_cell(8, row + 3, cell);
+        cell->ch = lpoctave;
+        tb_put_cell(9, row + 3, cell);
+
+        /* line number or left arrow */
+        const char is_current_line = (row == current_line);
+        const char left_arrow = is_current_line && column == NOTE;
+        const char right_arrow = is_current_line && column == LPNOTE;
+
+        black.ch = (left_arrow) ? '-' : "0123456789abcdef"[row];
         tb_put_cell(0, row + 3, &black);
-        black.ch = (row == current_line) ? '>' : ' ';
+
+        /* arrow blits over line number */
+        black.ch = (left_arrow) ? '>' : ' ';
         tb_put_cell(1, row + 3, &black);
+
+        /* right arrow */
+        black.ch = (right_arrow) ? '<': ' ';
+        tb_put_cell(11, row + 3, &black);
+        black.ch = (right_arrow) ? '-': ' ';
+        tb_put_cell(12, row + 3, &black);
     }
 }
 
@@ -255,6 +299,10 @@ int main(void)
 
     char quit_request = 0;
 
+    enum column_t column = NOTE;
+
+    char *edit_note;
+
     for (;;) {
 
         if (redraw_setting == FULL) {
@@ -266,8 +314,10 @@ int main(void)
             tb_puts("le bac / the badge audio composer", &cell, 8, 1);
         }
 
-        if (global_mode == SEQUENCER)
-            draw_note_column();
+        if (global_mode == SEQUENCER) {
+            draw_note_columns(column);
+            edit_note = (column == NOTE) ? &pattern[current_line].note : &pattern[current_line].lpnote;
+        }
 
         tb_present();
 
@@ -340,9 +390,13 @@ int main(void)
                 }
                 break;
 
+            case TB_KEY_TAB:
+                column = (column == NOTE) ? LPNOTE : NOTE;
+                break;
+
             case TB_KEY_BACKSPACE2:
             case TB_KEY_DELETE:
-                pattern[current_line].note = 0;
+                *edit_note = 0;
                 break;
             }
         }
@@ -381,21 +435,21 @@ int main(void)
             break;
 
         case 'H':
-            if (pattern[current_line].note == 0)
-                pattern[current_line].note = last_edit;
+            if (*edit_note == 0)
+                *edit_note = last_edit;
 
-            if (pattern[current_line].note < 13)
-                last_edit = pattern[current_line].note = 1;
+            if (*edit_note < 13)
+                last_edit = *edit_note = 1;
             else
-                last_edit = pattern[current_line].note -= 12;
+                last_edit = *edit_note -= 12;
             break;
 
         case 'h':
-            if (pattern[current_line].note == 0)
-                pattern[current_line].note = last_edit;
+            if (*edit_note == 0)
+                *edit_note = last_edit;
 
-            if (pattern[current_line].note > 1)
-                last_edit = --pattern[current_line].note;
+            if (*edit_note > 1)
+                last_edit = --*edit_note;
             break;
 
         case 'j':
@@ -409,21 +463,21 @@ int main(void)
             break;
 
         case 'l':
-            if (pattern[current_line].note == 0)
-                pattern[current_line].note = last_edit;
+            if (*edit_note == 0)
+                *edit_note = last_edit;
 
-            if (pattern[current_line].note < 63)
-                last_edit = ++pattern[current_line].note;
+            if (*edit_note < 63)
+                last_edit = ++*edit_note;
             break;
 
         case 'L':
-            if (pattern[current_line].note == 0)
-                pattern[current_line].note = last_edit;
+            if (*edit_note == 0)
+                *edit_note = last_edit;
 
-            if (pattern[current_line].note > 51)
-                last_edit = pattern[current_line].note = 63;
+            if (*edit_note > 51)
+                last_edit = *edit_note = 63;
             else
-                last_edit = pattern[current_line].note += 12;
+                last_edit = *edit_note += 12;
             break;
 
         case '=':
@@ -455,7 +509,7 @@ int main(void)
             break;
 
         case '.':
-            pattern[current_line].note = last_edit;
+            *edit_note = last_edit;
             break;
 
         case '?':
