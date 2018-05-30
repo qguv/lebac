@@ -135,7 +135,7 @@ void deconstruct_note(const struct line_t * const line, char * const note_name, 
 
     *note_name  = "bccddeffggaa"[line->note % 12];
     *accidental = "  # #  # # #"[line->note % 12];
-    *octave = "234567"[line->note / 12];
+    *octave = "234567"[(line->note - 1) / 12];
 }
 
 void draw_note_column(void)
