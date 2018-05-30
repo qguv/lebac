@@ -91,14 +91,16 @@ void audio(void)
     int cycle_samples, half_cycle_samples, quarter_cycle_samples, three_quarter_cycle_samples;
     for (int step = 0; step < 16; step++) {
 
+        /* FIXME no-note cells should continue previous wave, not restart it */
+
         char note = pattern[step].note;
         if (note) {
             double freq = note_freqs[note % 12];
             for (int i = 0; i < note / 12; i++)
-                freq *= 2; // wasting some cycles to get this right; errors accumulate
-            cycle_samples = (double) RATE / freq;
+                freq *= 2; /* wasting some cycles to get this right; errors accumulate */
+            cycle_samples = (double) RATE / freq + 0.5L;
             half_cycle_samples = cycle_samples >> 1;
-            quarter_cycle_samples = half_cycle_samples >> 1; // FIXME just 50% duty cycle for now
+            quarter_cycle_samples = half_cycle_samples >> 1; /* FIXME just 50% duty cycle for now */
             three_quarter_cycle_samples = half_cycle_samples + quarter_cycle_samples;
         }
 
