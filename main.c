@@ -130,21 +130,21 @@ void audio(int audio_pipe)
     close(audio_pipe);
 }
 
-void deconstruct_note(const struct line_t * const line, char * const note_name, char * const accidental, char * const octave)
+void deconstruct_note(char note, char * const note_name, char * const accidental, char * const octave)
 {
-    if (line->note == 0) {
+    if (note == 0) {
         *note_name = *accidental = *octave = '-';
         return;
     }
 
-    if (line->note > 63) {
+    if (note > 63) {
         *note_name = *accidental = *octave = '!';
         return;
     }
 
-    *note_name  = "bccddeffggaa"[line->note % 12];
-    *accidental = "  # #  # # #"[line->note % 12];
-    *octave = "234567"[(line->note - 1) / 12];
+    *note_name  = "bccddeffggaa"[note % 12];
+    *accidental = "  # #  # # #"[note % 12];
+    *octave = "234567"[(note - 1) / 12];
 }
 
 void draw_note_column(void)
@@ -164,7 +164,7 @@ void draw_note_column(void)
     char note_name, accidental, octave;
     for (int row = 0; row < 16; row++) {
 
-        deconstruct_note(&pattern[row], &note_name, &accidental, &octave);
+        deconstruct_note(pattern[row].note, &note_name, &accidental, &octave);
 
         if (row % 4 == 0) {
             bright.ch = note_name;
@@ -219,7 +219,7 @@ void draw_help(void)
         tb_puts(helptext[i][0], &cell, 1, i + 3);
 
         cell.fg = TB_DEFAULT;
-        tb_puts(helptext[i][1], &cell, 9, i + 3);
+        tb_puts(helptext[i][1], &cell, 8, i + 3);
     }
 }
 
@@ -420,11 +420,10 @@ int main(void)
             if (pattern[current_line].note == 0)
                 pattern[current_line].note = last_edit;
 
-            if (pattern[current_line].note > 51) {
+            if (pattern[current_line].note > 51)
                 last_edit = pattern[current_line].note = 63;
-            } else {
+            else
                 last_edit = pattern[current_line].note += 12;
-            }
             break;
 
         case '=':
