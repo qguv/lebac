@@ -18,6 +18,9 @@
 #define DRIVER NULL
 #define ENCODING "s16"
 
+/* crunch into 1.5 bit space? */
+#define EMULATE_SHITTY_BADGE_AUDIO 1
+
 /* badge audio rate */
 #define RATE 38000
 
@@ -140,16 +143,17 @@ void audio(int audio_pipe)
             int pos = i % cycle_samples,
                 lppos = i % lpcycle_samples;
 
-            char note_level = (pos < quarter_cycle_samples) ? 1 :
-                              (pos >= half_cycle_samples && pos < three_quarter_cycle_samples) ? -1 :
+            int16_t note_level = (pos < quarter_cycle_samples) ? (INT16_MAX >> (1 + MERCY)) :
+                              (pos >= half_cycle_samples && pos < three_quarter_cycle_samples) ? (INT16_MIN >> (1 + MERCY)) :
                               0;
-            char lpnote_level = (lppos < lpquarter_cycle_samples) ? 1 :
-                                (lppos >= lphalf_cycle_samples && lppos < lpthree_quarter_cycle_samples) ? -1 :
+            int16_t lpnote_level = (lppos < lpquarter_cycle_samples) ? (INT16_MAX >> (1 + MERCY)) :
+                                (lppos >= lphalf_cycle_samples && lppos < lpthree_quarter_cycle_samples) ? (INT16_MIN >> (1 + MERCY)) :
                                 0;
 
-            int16_t sample = QUANTIZE(note_level + lpnote_level, INT16_MIN >> MERCY, INT16_MAX >> MERCY);
-            //DEBUG int16_t sample = SIGN(note_level + lpnote_level) ? (INT16_MAX >> MERCY) : (INT16_MIN >> MERCY);
-            (void) note_level; // DEBUG
+            int16_t sample = note_level + lpnote_level;
+            if (EMULATE_SHITTY_BADGE_AUDIO)
+                sample = QUANTIZE(note_level + lpnote_level, INT16_MIN >> MERCY, INT16_MAX >> MERCY);
+
             write(audio_pipe, (char *) &sample, sizeof(sample));
         }
     }
