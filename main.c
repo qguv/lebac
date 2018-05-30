@@ -2,6 +2,7 @@
  * all bugs are qguv's fault */
 
 #include "notes.h"
+#include "help.h"
 
 #include <stdio.h>
 #include <strings.h>
@@ -21,8 +22,8 @@
 /* more mercy == less volume */
 #define MERCY 4
 
-#define TEMPO_MAX 200
-#define TEMPO_MIN 20
+#define TEMPO_MAX 255
+#define TEMPO_MIN 16
 #define TEMPO_JUMP 10
 
 struct line_t {
@@ -33,7 +34,11 @@ struct line_t pattern[16];
 
 int current_line = 0;
 
-int tempo = 128;
+unsigned char tempo = 128;
+
+enum redraw { NORMAL, FULL };
+
+enum global_mode_t { SEQUENCER, HELP };
 
 void die(const char * const s)
 {
@@ -199,6 +204,34 @@ void draw_tempo(void)
     tb_puts(s, &cell, 3, 1);
 }
 
+void draw_help(void)
+{
+    struct tb_cell cell;
+    cell.fg = TB_DEFAULT | TB_BOLD;
+    cell.bg = TB_MAGENTA;
+
+    tb_puts("HELP", &cell, 1, 1);
+
+    cell.bg = TB_DEFAULT;
+
+    for (int i = 0; helptext[i][0]; i++) {
+        cell.fg = TB_DEFAULT | TB_BOLD;
+        tb_puts(helptext[i][0], &cell, 1, i + 3);
+
+        cell.fg = TB_DEFAULT;
+        tb_puts(helptext[i][1], &cell, 9, i + 3);
+    }
+}
+
+void draw_not_quit(void)
+{
+    struct tb_cell cell;
+    cell.fg = TB_DEFAULT;
+    cell.bg = TB_DEFAULT;
+
+    tb_puts("the quit key is ctrl-c  ", &cell, 17, 1);
+}
+
 int main(void)
 {
     int err = tb_init();
@@ -213,46 +246,77 @@ int main(void)
 
     char last_edit = 25;
 
+    enum redraw redraw_setting = FULL;
+    enum global_mode_t global_mode = SEQUENCER;
+
     struct tb_cell cell;
     cell.fg = TB_DEFAULT;
     cell.bg = TB_DEFAULT;
 
     char quit_request = 0;
-    char full_redraw = 1;
 
     for (;;) {
-        if (full_redraw) {
+
+        if (redraw_setting == FULL) {
             tb_clear();
-            draw_tempo();
+            if (global_mode == SEQUENCER)
+                draw_tempo();
+            else if (global_mode == HELP)
+                draw_help();
             tb_puts("le bac / the badge audio composer", &cell, 8, 1);
-            full_redraw = 0;
         }
 
-        draw_note_column();
+        if (global_mode == SEQUENCER)
+            draw_note_column();
+
         tb_present();
 
+        redraw_setting = NORMAL;
+
         err = tb_poll_event(&event);
-        if (err < 0) {
-            /* TODO handle more gracefully */
-            tb_shutdown();
-            die("event error\n");
-        }
+        if (err < 0)
+            tb_puts("termbox event error :(  ", &cell, 17, 1);
 
         if (event.type == TB_EVENT_RESIZE) {
-            full_redraw = 1;
+            redraw_setting = FULL;
             continue;
         }
 
         if (event.type == TB_EVENT_MOUSE)
             continue;
 
+        /* help mode handles keys differently */
+        if (global_mode == HELP) {
+            global_mode = SEQUENCER;
+            redraw_setting = FULL;
+            continue;
+        }
+
+        if (event.key == TB_KEY_CTRL_C) {
+
+            /* quit request confirmed? */
+            if (quit_request) {
+                tb_shutdown();
+                return 0;
+            }
+
+            /* quit request issued? */
+            tb_puts("press again to quit     ", &cell, 17, 1);
+            quit_request = 1;
+            continue;
+
+        /* quit request cancelled? */
+        } else if (quit_request) {
+            redraw_setting = FULL;
+            quit_request = 0;
+        }
+
+        /* special key pressed */
         if (!event.ch) {
             switch (event.key) {
 
-            /* aliases for characters */
             case TB_KEY_ESC:
-            case TB_KEY_CTRL_C:
-                event.ch = 'Q';
+                draw_not_quit();
                 break;
             case TB_KEY_ARROW_LEFT:
                 event.ch = 'h';
@@ -283,26 +347,12 @@ int main(void)
             }
         }
 
-        if (event.ch == 'Q') {
-
-            /* quit request confirmed? */
-            if (quit_request) {
-                tb_shutdown();
-                return 0;
-            }
-
-            /* quit request issued? */
-            tb_puts("press again to quit     ", &cell, 17, 1);
-            quit_request = 1;
-            continue;
-
-        /* quit request cancelled? */
-        } else if (quit_request) {
-            full_redraw = 1;
-            quit_request = 0;
-        }
-
         switch (event.ch) {
+
+        case 'Q':
+        case 'q':
+            draw_not_quit();
+            break;
 
         case 'C':
             for (int i = 0; i < 16; i++)
@@ -313,15 +363,17 @@ int main(void)
         case 'T':
             clock_gettime(CLOCK_REALTIME, &tempo_input);
 
+            /* calculate new tempo */
             if (last_tempo_input.tv_sec != 0) {
-                double x = (double) (tempo_input.tv_sec & 0xffff) - (double) (last_tempo_input.tv_sec & 0xffff);
-                x += (tempo_input.tv_nsec - last_tempo_input.tv_nsec) * 1e-9;
-                tempo = 60.0L / x + 0.5;
-                if (tempo < 20)
-                    tempo = 20;
-                if (tempo > 200)
-                    tempo = 200;
-                draw_tempo();
+                if (tempo_input.tv_sec - last_tempo_input.tv_sec < 3) {
+                    double x = (double) (tempo_input.tv_sec) - (double) (last_tempo_input.tv_sec);
+                    x += (tempo_input.tv_nsec - last_tempo_input.tv_nsec) * 1e-9;
+                    x = 60.0L / x + 0.5L;
+                    if (x > TEMPO_MIN && x < TEMPO_MAX) {
+                        tempo = x;
+                        draw_tempo();
+                    }
+                }
             }
 
             last_tempo_input.tv_sec = tempo_input.tv_sec;
@@ -405,6 +457,12 @@ int main(void)
 
         case '.':
             pattern[current_line].note = last_edit;
+            break;
+
+        case '?':
+            global_mode = HELP;
+            redraw_setting = FULL;
+            quit_request = 0;
             break;
         }
     }
