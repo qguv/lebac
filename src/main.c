@@ -18,7 +18,7 @@
 #define ENCODING "s16"
 
 /* crunch into 1.5 bit space? */
-#define EMULATE_SHITTY_BADGE_AUDIO 1
+#define EMULATE_SHITTY_BADGE_AUDIO 0
 
 /* badge audio rate */
 #define RATE 38000
@@ -124,6 +124,9 @@ int audio_child(int * const pid_p)
 
 int samples_per_cycle(char note)
 {
+    if (note <= 0)
+        return 0;
+
     double freq = note_freqs[note % 12];
     for (int i = 0; i < note / 12; i++)
         freq *= 2; /* wasting some cycles to get this right; errors accumulate */
@@ -140,15 +143,21 @@ int samples_per_cycle(char note)
  *
  * 50% duty:
  *
- *   ,________,                          ,________,
- *   |        |                          |        |
+ *      begin_high
+ *     /        end_high
+ *    /        /          begin_low
+ *   ,________,          /               ,________,
+ *   |        |         /                |        |
  * __|        |________,        ,________|        |________,        ,___...
  *                     |        |                          |        |
  *                     |________|                          |________|
  *
+ *                               \
+ *                                end_low
  *
  *   |-----------------------------------|
  *                one wavelength
+ *                cycle_samples
  *
  * -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -
  *
@@ -204,7 +213,7 @@ void audio(int audio_pipe)
                 play[channel] = 1;
                 cycle_samples[channel] = samples_per_cycle(note);
 
-                /* make math cheaper per sample */
+                /* make math cheaper per sample by doing it upfront */
                 begin_low[channel] = cycle_samples[channel] >> 1;
                 end_high[channel] = begin_low[channel] >> duty;
                 end_low[channel] = begin_low[channel] + end_high[channel];
@@ -225,10 +234,10 @@ void audio(int audio_pipe)
                 int pos = cycle_pos[channel];
 
                 /* first half of the wave */
-                if (pos < begin_low[i]) {
+                if (pos < begin_low[channel]) {
 
                     /* within the high section */
-                    if (pos < end_high[i]) {
+                    if (pos < end_high[channel]) {
                         sample += INT16_MAX >> (1 + MERCY);
                     }
 
@@ -236,10 +245,16 @@ void audio(int audio_pipe)
                 } else {
 
                     /* within the low section */
-                    if (pos < end_low[i]) {
+                    if (pos < end_low[channel]) {
                         sample += INT16_MIN >> (1 + MERCY);
                     }
                 }
+
+                cycle_pos[channel]++;
+                if (cycle_pos[channel] >= cycle_samples[channel]) {
+                    cycle_pos[channel] = 0;
+                }
+                printf("cycle_pos[%d]: %d\r\n", channel, cycle_pos[channel]);
             }
 
             /* at this point, we're in two-and-a-half bit space: [-2, -1, 0, 1, 2 ]
@@ -295,10 +310,13 @@ void tb_put_note(const struct note_t * const note, struct tb_cell * const cell, 
     cell->ch = octave;
     tb_put_cell(x + 2, y, cell);
 
-    tb_puts(duties[(int) note->duty], cell, x + 4, y);
-
-    cell->ch = '%';
-    tb_put_cell(x + 6, y, cell);
+    if (note->note > 0) {
+        tb_puts(duties[(int) note->duty], cell, x + 4, y);
+        cell->ch = '%';
+        tb_put_cell(x + 6, y, cell);
+    } else {
+        tb_puts("---", cell, x + 4, y);
+    }
 }
 
 void draw_note_columns(enum column_t column)
@@ -319,7 +337,7 @@ void draw_note_columns(enum column_t column)
 
         /* note columns */
         for (int i = 0; i < 2; i++)
-            tb_put_note(&pattern[row][i], cell, 7 * i + 3, row + 3);
+            tb_put_note(&pattern[row][i], cell, 9 * i + 3, row + 3);
 
         /* line number or left arrow */
         const char is_current_line = (row == current_line);
@@ -335,9 +353,9 @@ void draw_note_columns(enum column_t column)
 
         /* right arrow */
         dcell.ch = (right_arrow) ? '<': ' ';
-        tb_put_cell(11, row + 3, &dcell);
+        tb_put_cell(20, row + 3, &dcell);
         dcell.ch = (right_arrow) ? '-': ' ';
-        tb_put_cell(12, row + 3, &dcell);
+        tb_put_cell(21, row + 3, &dcell);
     }
 }
 
@@ -476,7 +494,7 @@ int main(int argc, char *argv[])
         if (event.type == TB_EVENT_MOUSE)
             continue;
 
-        /* help mode handles keys differently */
+        /* help mode handles keys separately */
         if (global_mode == HELP) {
             quit_request = 0;
             global_mode = SEQUENCER;
