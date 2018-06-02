@@ -417,11 +417,9 @@ void draw_not_quit(void)
 
 void save(char *songfile)
 {
-#if PIGSFLY
-    /* FIXME detect malformatted files */
     /* TODO allow filenames to be specified at load */
 
-    int fd = open(songfile, O_CREAT | O_RDWR);
+    int fd = open(songfile, O_CREAT | O_RDWR, 0600);
     if (fd < 0) {
         tb_puts("can't open file         ", &dcell, 17, 1);
         tb_puts(songfile, &dcell, 33, 1);
@@ -434,8 +432,8 @@ void save(char *songfile)
         saving_page = saving_page->prev;
 
     while (saving_page) {
-
-        int to_write = sizeof(struct page_t);
+        int written = 0;
+        int to_write = sizeof(page->notes);
         while (written < to_write) {
             written += write(fd, ((char *) page->notes) + written, to_write - written);
         }
@@ -444,9 +442,6 @@ void save(char *songfile)
     }
 
     close(fd);
-#else
-    (void) songfile;
-#endif /* PIGSFLY */
 }
 
 void load(char *songfile)
