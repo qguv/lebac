@@ -12,6 +12,8 @@
 #include <stdlib.h> // exit
 #include <time.h> // clock_gettime
 #include <unistd.h> // pipe, fork, close, dup, exec, ...
+#include <string.h> // strerror()
+#include <errno.h> // errno
 
 /* crunch into 1.5 bit space? */
 #define EMULATE_SHITTY_BADGE_AUDIO 1
@@ -99,7 +101,7 @@ int audio_child(int * const pid_p)
     int pipefds[2];
     int err = pipe(pipefds);
     if (err) {
-        fputs("couldn't create a pipe\n", stderr);
+        fprintf(stderr, "Couldn't create a pipe: %s\n", strerror(errno));
         exit(1);
     }
 
@@ -422,7 +424,9 @@ void save(char *songfile)
 
     int fd = open(songfile, O_CREAT | O_RDWR, 0600);
     if (fd < 0) {
-        tb_puts("can't open file         ", &dcell, 17, 1);
+        char buf[1000];
+        sprintf(buf, "%s: Can't open file: %s\n", songfile, strerror(errno));
+        tb_puts(buf, &dcell, 17, 1);
         tb_puts(songfile, &dcell, 33, 1);
         return;
     }
@@ -434,9 +438,20 @@ void save(char *songfile)
 
     while (saving_page) {
         int written = 0;
+        int wrote = 0;
         int to_write = sizeof(page->notes);
         while (written < to_write) {
-            written += write(fd, ((char *) page->notes) + written, to_write - written);
+            wrote = write(fd, ((char *) page->notes) + written, to_write - written);
+            if (wrote < 0) {
+                char buffer[1000];
+                if (errno == EINTR)
+                    continue;
+                sprintf(buffer, "%s: write failed: %s", songfile, strerror(errno));
+                tb_puts(buffer, &dcell, 17, 1);
+                break;
+            }
+
+            written += wrote;
         }
 
         saving_page = saving_page->next;
@@ -450,7 +465,9 @@ void load(char *songfile)
     /* TODO allow filenames to be specified at load */
     int fd = open(songfile, O_RDONLY);
     if (fd < 0) {
-        tb_puts("no permissions for      ", &dcell, 17, 1);
+        char buf[1000];
+        sprintf(buf, "%s: Cannot open: %s", songfile, strerror(errno));
+        tb_puts(buf, &dcell, 17, 1);
         tb_puts(songfile, &dcell, 36, 1);
         return;
     }
@@ -467,7 +484,7 @@ void load(char *songfile)
         peek_ret = read(fd, &peek, 1);
 
         /* read error; free and abort */
-        if (peek_ret < 0 || peek_ret > 1) {
+        if (peek_ret < 0 || peek_ret > 1) { /* how will it ever be > 1? */
             break;
 
         /* file ended normally; replace current pattern with loaded pattern */
@@ -509,6 +526,8 @@ void load(char *songfile)
         int just_red, total_red = 1, to_read = sizeof(load_page->notes);
         while (total_red < to_read) {
             just_red = read(fd, ((char *) load_page->notes) + total_red, to_read - total_red);
+            if (just_red < 0 && errno == EINTR)
+                continue;
 
             /* file didn't end at a page boundary; free and abort */
             if (just_red <= 0) {
@@ -520,6 +539,12 @@ void load(char *songfile)
     }
 
     /* we get here on read errors */
+    if (errno != 0) {
+        char buf[1000];
+        sprintf(buf, "%s: read error: %s", songfile, strerror(errno));
+        tb_puts(buf, &dcell, 17, 1);
+        tb_puts(songfile, &dcell, 36, 1);
+    }
     close(fd);
     while (load_page) {
         tmp_page = load_page->prev;
