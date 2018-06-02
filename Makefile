@@ -1,4 +1,3 @@
-
 CC=gcc
 ERROR_OPTS=-Wall -Wpedantic -Wextra -Werror
 LIBS=-Itermbox/src -L./build/termbox/src -ltermbox -lrt
@@ -18,4 +17,3 @@ build/termbox/src/libtermbox.a: Makefile
 
 clean:
 	rm -fr ./build
-

@@ -13,10 +13,6 @@
 #include <time.h> // clock_gettime
 #include <unistd.h> // pipe, fork, close, dup, exec, ...
 
-/* set only if your audio driver needs tweaking */
-#define DRIVER NULL
-#define ENCODING "s16"
-
 /* crunch into 1.5 bit space? */
 #define EMULATE_SHITTY_BADGE_AUDIO 1
 
@@ -121,7 +117,7 @@ int audio_child(int * const pid_p)
         close(pipefds[1]);
         dup2(pipefds[0], STDIN_FILENO);
         close(pipefds[0]);
-        execlp("out123", "out123", "--mono", "--encoding", "s16", "--rate", "38000", (char *) NULL);
+        execlp("aplay", "aplay", "-c", "1", "-f", "S16_LE", "-r", "38000", (char *) NULL);
     }
     if (pid_p != NULL)
         *pid_p = pid;
