@@ -42,14 +42,6 @@ const char * const duties[] = {
     " 6",
     " 3",
     " 1",
-    "L1",
-    "L2",
-    "L3",
-    "L4",
-    "L5",
-    "L6",
-    "L7",
-    "L8",
 };
 
 struct note_t {
@@ -816,6 +808,7 @@ int main(int argc, char *argv[])
                 }
             }
             break;
+
         case '=':
             if (tempo < TEMPO_MAX)
                 tempo++;
@@ -842,6 +835,20 @@ int main(int argc, char *argv[])
             else
                 tempo = TEMPO_MIN;
             draw_tempo();
+            break;
+
+        case '[':
+            if (edit_note->duty < 6)
+                edit_note->duty++;
+            last_edit.note = edit_note->note;
+            last_edit.duty = edit_note->duty;
+            break;
+
+        case ']':
+            if (edit_note->duty > 1)
+                edit_note->duty--;
+            last_edit.note = edit_note->note;
+            last_edit.duty = edit_note->duty;
             break;
 
         case '.':

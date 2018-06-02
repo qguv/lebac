@@ -10,6 +10,8 @@ char *helptext[][2] = {
     {"=======", ""},
     {"h/H", "lower note one semitone / octave"},
     {"l/L", "raise note one semitone / octave"},
+    {"[", "increase duty cycle"},
+    {"]", "decrease duty cycle"},
     {"DEL", "clear a note"},
     {".", "paste last changed note"},
     {"x", "toggle kill"},
