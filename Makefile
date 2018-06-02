@@ -1,6 +1,6 @@
 CC=gcc
 ERROR_OPTS=-Wall -Wpedantic -Wextra -Werror
-LIBS=-Itermbox/src -L./build/termbox/src -ltermbox -lrt
+LIBS=-Itermbox/src -Lbuild/termbox/src -ltermbox -lrt
 OUTPUT=build/lebac
 
 build/lebac: build/termbox/src/libtermbox.a src/*.c src/*.h Makefile
@@ -16,4 +16,4 @@ build/termbox/src/libtermbox.a: Makefile
 	)
 
 clean:
-	rm -fr ./build
+	rm -rf build
