@@ -14,6 +14,7 @@
 #include <unistd.h> // pipe, fork, close, dup, exec, ...
 #include <string.h> // strerror()
 #include <errno.h> // errno
+#include <stdarg.h>
 
 /* crunch into 1.5 bit space? */
 #define EMULATE_SHITTY_BADGE_AUDIO 1
@@ -84,6 +85,25 @@ void tb_puts(const char * const s, struct tb_cell *cell, int x, int y)
         cell->ch = c;
         tb_put_cell(x + i, y, cell);
     }
+}
+
+void lebac_msg(char *format, ...)
+{
+    int i;
+    char buffer[80];
+    va_list arg_ptr;
+
+    /* Blank out the status line */
+    for (i = 0; i < (int) sizeof(buffer) - 1; i++)
+        buffer[i] = ' ';
+    buffer[sizeof(buffer) - 1] = '\0';
+    tb_puts(buffer, &dcell, 1, 23);
+
+    /* Fill in the status line with the new error message */
+    va_start(arg_ptr, format);
+    vsnprintf(buffer, sizeof(buffer), format, arg_ptr);
+    va_end(arg_ptr);
+    tb_puts(buffer, &dcell, 1, 23);
 }
 
 void debug(const char * const s)
@@ -415,7 +435,7 @@ void draw_help(void)
 
 void draw_not_quit(void)
 {
-    tb_puts("the quit key is ctrl-c  ", &dcell, 17, 1);
+    lebac_msg("The quit key is ctrl-c");
 }
 
 void save(char *songfile)
@@ -424,10 +444,7 @@ void save(char *songfile)
 
     int fd = open(songfile, O_CREAT | O_RDWR, 0600);
     if (fd < 0) {
-        char buf[1000];
-        sprintf(buf, "%s: Can't open file: %s\n", songfile, strerror(errno));
-        tb_puts(buf, &dcell, 17, 1);
-        tb_puts(songfile, &dcell, 33, 1);
+        lebac_msg("%s: Can't open file: %s\n", songfile, strerror(errno));
         return;
     }
 
@@ -443,11 +460,9 @@ void save(char *songfile)
         while (written < to_write) {
             wrote = write(fd, ((char *) page->notes) + written, to_write - written);
             if (wrote < 0) {
-                char buffer[1000];
                 if (errno == EINTR)
                     continue;
-                sprintf(buffer, "%s: write failed: %s", songfile, strerror(errno));
-                tb_puts(buffer, &dcell, 17, 1);
+                lebac_msg("%s: write failed: %s", songfile, strerror(errno));
                 break;
             }
 
@@ -465,10 +480,7 @@ void load(char *songfile)
     /* TODO allow filenames to be specified at load */
     int fd = open(songfile, O_RDONLY);
     if (fd < 0) {
-        char buf[1000];
-        sprintf(buf, "%s: Cannot open: %s", songfile, strerror(errno));
-        tb_puts(buf, &dcell, 17, 1);
-        tb_puts(songfile, &dcell, 36, 1);
+        lebac_msg("%s: Cannot open: %s", songfile, strerror(errno));
         return;
     }
 
@@ -539,12 +551,8 @@ void load(char *songfile)
     }
 
     /* we get here on read errors */
-    if (errno != 0) {
-        char buf[1000];
-        sprintf(buf, "%s: read error: %s", songfile, strerror(errno));
-        tb_puts(buf, &dcell, 17, 1);
-        tb_puts(songfile, &dcell, 36, 1);
-    }
+    if (errno != 0)
+        lebac_msg("%s: read error: %s", songfile, strerror(errno));
     close(fd);
     while (load_page) {
         tmp_page = load_page->prev;
@@ -611,7 +619,7 @@ int main(int argc, char *argv[])
 
         err = tb_poll_event(&event);
         if (err < 0)
-            tb_puts("termbox event error :(  ", &dcell, 17, 1);
+            lebac_msg("termbox event error :(  ");
 
         if (event.type == TB_EVENT_RESIZE) {
             redraw_setting = FULL;
@@ -638,7 +646,7 @@ int main(int argc, char *argv[])
             }
 
             /* quit request issued? */
-            tb_puts("press again to quit     ", &dcell, 17, 1);
+            lebac_msg("press again to quit     ");
             quit_request = 1;
             continue;
 
@@ -948,14 +956,12 @@ int main(int argc, char *argv[])
 
         case 'S':
             save(songfile);
-            tb_puts("saved to                ", &dcell, 17, 1);
-            tb_puts(songfile, &dcell, 26, 1);
+            lebac_msg("saved to %s", songfile);
             break;
 
         case 'D':
             load(songfile);
-            tb_puts("loaded                  ", &dcell, 17, 1);
-            tb_puts(songfile, &dcell, 24, 1);
+            lebac_msg("loaded %s", songfile);
             break;
         }
     }
