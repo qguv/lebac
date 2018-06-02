@@ -446,8 +446,6 @@ void save(char *songfile)
 
 void load(char *songfile)
 {
-#if PIGSFLY
-    /* FIXME detect malformatted files */
     /* TODO allow filenames to be specified at load */
     int fd = open(songfile, O_RDONLY);
     if (fd < 0) {
@@ -456,27 +454,77 @@ void load(char *songfile)
         return;
     }
 
-    /* rewind to the first page */
-    struct page_t *tmp, *saving_page = page;
-    while (saving_page->prev != NULL)
-        saving_page = saving_page->prev;
+    struct page_t *load_page = NULL;
+    int num_load_pages = 0;
 
-    while (saving_page) {
-        tmp = saving_page->next;
-        free(saving_page);
-        saving_page = tmp;
+    char peek;
+    int peek_ret;
+
+    for (;;) {
+
+        /* peek into the file to see if we need to allocate a whole 'nother page */
+        peek_ret = read(fd, &peek, 1);
+
+        /* read error; free and abort */
+        if (peek_ret < 0 || peek_ret > 1) {
+            break;
+
+        /* file ended normally; replace current pattern with loaded pattern */
+        } else if (peek_ret == 0) {
+
+            close(fd);
+
+            /* free existing pages of pattern memory */
+            while (page->prev)
+                page = page->prev;
+            while (page->next) {
+                tmp_page = page->next;
+                free(page);
+                page = tmp_page;
+            }
+
+            /* load and seek to first page */
+            page = load_page;
+            while (page->prev)
+                page = page->prev;
+            page_num = 1;
+            num_pages = num_load_pages;
+
+            return;
+        }
+
+        /* allocate new page to hold more pattern */
+        tmp_page = load_page;
+        load_page = calloc(1, sizeof(struct page_t));
+        load_page->prev = tmp_page;
+        if (tmp_page)
+            tmp_page->next = load_page;
+        num_load_pages++;
+
+        /* throw the peek byte in there */
+        ((char *) load_page->notes)[0] = peek;
+
+        /* load the rest with normal read calls */
+        int just_red, total_red = 1, to_read = sizeof(load_page->notes);
+        while (total_red < to_read) {
+            just_red = read(fd, ((char *) load_page->notes) + total_red, to_read - total_red);
+
+            /* file didn't end at a page boundary; free and abort */
+            if (just_red <= 0) {
+                return;
+            }
+
+            total_red += just_red;
+        }
     }
 
-    num_pages = 0;
-    page = 1;
-
-    int readed
-    while (i < (int) sizeof(page->notes))
-        i += read(fd, &page->notes[i], sizeof(page->notes) - i);
+    /* we get here on read errors */
     close(fd);
-#else
-    (void) songfile;
-#endif /* PIGSFLY */
+    while (load_page) {
+        tmp_page = load_page->prev;
+        free(load_page);
+        load_page = tmp_page;
+    }
 }
 
 int main(int argc, char *argv[])
