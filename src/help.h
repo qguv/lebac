@@ -3,6 +3,8 @@ char *helptext[][2] = {
     {"========", ""},
     {"k", "move up a note"},
     {"j", "move down a note"},
+    {"K", "move to the previous page"},
+    {"J", "move to the next page"},
     {"", ""},
     {"editing", ""},
     {"=======", ""},
@@ -10,7 +12,8 @@ char *helptext[][2] = {
     {"l/L", "raise note one semitone / octave"},
     {"DEL", "clear a note"},
     {".", "paste last changed note"},
-    /* {"x", "toggle kill"}, */
+    {"x", "toggle kill"},
+    {"X", "delete page"},
     {"", ""},
     {"song", ""},
     {"====", ""},
