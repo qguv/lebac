@@ -19,6 +19,7 @@ char *helptext[][2] = {
     {"", ""},
     {"song", ""},
     {"====", ""},
+    {"p/P", "play this pattern / whole song"},
     {"-/_", "decrease tempo by one / ten"},
     {"=/+", "increase tempo by one / ten"},
     {"S/D", "save / load song from file"},

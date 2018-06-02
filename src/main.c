@@ -180,7 +180,7 @@ int samples_per_cycle(char note)
  * buzzer on the badge. this gives you a very accurate simulation of how your
  * composition will sound when playing on the badge.
  */
-void audio(int audio_pipe)
+void audio(int audio_pipe, char just_one_page)
 {
     /* duration of one sequencer step, in samples */
     const int samples_per_step = RATE * 15 / tempo;
@@ -193,8 +193,10 @@ void audio(int audio_pipe)
 
     /* scroll back to the first page */
     struct page_t *playing_page = page;
-    while (playing_page->prev != NULL)
-        playing_page = playing_page->prev;
+    if (!just_one_page) {
+        while (playing_page->prev != NULL)
+            playing_page = playing_page->prev;
+    }
 
     while (playing_page) {
         for (int step = 0; step < 16; step++) {
@@ -281,7 +283,8 @@ void audio(int audio_pipe)
                 write(audio_pipe, (char *) &sample, sizeof(sample));
             }
         }
-        playing_page = playing_page->next;
+
+        playing_page = just_one_page ? NULL : playing_page->next;
     }
 
     close(audio_pipe);
@@ -599,15 +602,8 @@ int main(int argc, char *argv[])
             case TB_KEY_ARROW_RIGHT:
                 event.ch = 'l';
                 break;
-
-            /* play audio */
             case TB_KEY_ENTER:
-                if (!fork()) {
-                    /* TODO: send SIGTERM when parent dies */
-                    int audio_pipe = audio_child(NULL);
-                    audio(audio_pipe);
-                    exit(0);
-                }
+                event.ch = 'p';
                 break;
 
             /* switch columns */
@@ -633,6 +629,26 @@ int main(int argc, char *argv[])
         case 'Q':
         case 'q':
             draw_not_quit();
+            break;
+
+        /* play whole pattern */
+        case 'P':
+            if (!fork()) {
+                /* TODO: send SIGTERM when parent dies */
+                int audio_pipe = audio_child(NULL);
+                audio(audio_pipe, 0);
+                exit(0);
+            }
+            break;
+
+        /* play this page */
+        case 'p':
+            if (!fork()) {
+                /* TODO: send SIGTERM when parent dies */
+                int audio_pipe = audio_child(NULL);
+                audio(audio_pipe, 1);
+                exit(0);
+            }
             break;
 
         /* clear this page */
