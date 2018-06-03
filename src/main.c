@@ -836,7 +836,6 @@ int main(int argc, char *argv[])
                 page = page->prev;
                 page_num--;
                 redraw_setting = FULL;
-                current_line = 15;
             }
             break;
 
