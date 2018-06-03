@@ -16,9 +16,6 @@
 #include <errno.h> // errno
 #include <stdarg.h>
 
-/* crunch into 1.5 bit space? */
-#define EMULATE_SHITTY_BADGE_AUDIO 1
-
 /* badge audio rate */
 #define RATE 38000
 
@@ -70,6 +67,9 @@ int num_pages = 1;
 int current_line = 0;
 
 unsigned char tempo = 128;
+
+/* crunch into 1.5 bit space? */
+char emulate_shitty_badge_audio = 1;
 
 /* default colors */
 struct tb_cell dcell;
@@ -149,48 +149,10 @@ int samples_per_cycle(char note)
  * audio_child pipe each time. we will close the audio pipe for you when it's
  * done playing.
  *
- * the synthesizer alg creates triangle wave approximations with varying duty
- * cycles. the waves look like this:
- *
- *
- * 50% duty:
- *
- *      begin_high
- *     /        end_high
- *    /        /          begin_low
- *   ,________,          /               ,________,
- *   |        |         /                |        |
- * __|        |________,        ,________|        |________,        ,___...
- *                     |        |                          |        |
- *                     |________|                          |________|
- *
- *                               \
- *                                end_low
- *
- *   |-----------------------------------|
- *                one wavelength
- *                cycle_samples
- *
- * -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -
- *
- *  12% duty:
- *
- *   ,___,                               ,___,
- *   |   |                               |   |
- * __|   |_____________,   ,_____________|   |_____________,   ,________...
- *                     |   |                               |   |
- *                     |___|                               |___|
- *
- *
- *   |-----------------------------------|
- *                one wavelength
- *
- * -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -
- *
  * there are two such waves which are added to produce a result--this is what
  * is meant by "two-channel audio".
  *
- * if EMULATE_SHITTY_BADGE_AUDIO is enabled, we'll then restrict the wave to
+ * if emulate_shitty_badge_audio, we'll then restrict the wave to
  * three possible values: INT16_MAX, 0, and INT16_MIN, representing the push/1,
  * neutralize/0, and pull/-1 states the H-bridge can take when driving the
  * buzzer on the badge. this gives you a very accurate simulation of how your
@@ -293,7 +255,7 @@ void audio(int audio_pipe, char just_one_page)
                  * numbers up to INT16_MAX and all negative numbers down to
                  * INT16_MIN.
                  */
-                if (EMULATE_SHITTY_BADGE_AUDIO)
+                if (emulate_shitty_badge_audio)
                     sample = QUANTIZE(sample, INT16_MIN >> MERCY, INT16_MAX >> MERCY);
 
                 write(audio_pipe, (char *) &sample, sizeof(sample));
@@ -388,11 +350,11 @@ void draw_tempo(void)
     cell.bg = TB_DEFAULT;
 
     char s[4];
-    tb_puts("TPO", &cell, 0, 1);
+    tb_puts("Tempo", &cell, 9, 1);
 
     cell.bg = TB_MAGENTA;
     snprintf(s, sizeof(s), "%3d", tempo);
-    tb_puts(s, &cell, 4, 1);
+    tb_puts(s, &cell, 15, 1);
 }
 
 void draw_page_num(void)
@@ -404,7 +366,16 @@ void draw_page_num(void)
     char s[8];
     cell.bg = TB_MAGENTA;
     snprintf(s, sizeof(s), "%02x / %02x", page_num, num_pages);
-    tb_puts(s, &cell, 0, 2);
+    tb_puts(s, &cell, 0, 1);
+}
+
+void draw_emulated(void)
+{
+    struct tb_cell cell;
+    cell.fg = TB_DEFAULT | TB_BOLD;
+    cell.bg = TB_DEFAULT;
+
+    tb_puts(emulate_shitty_badge_audio ? "EMU ON" : "no emu", &cell, 20, 1);
 }
 
 void draw_help(void)
@@ -593,12 +564,12 @@ int main(int argc, char *argv[])
         if (redraw_setting == FULL) {
             tb_clear();
             if (global_mode == SEQUENCER) {
-                draw_tempo();
                 draw_page_num();
+                draw_tempo();
+                draw_emulated();
             } else if (global_mode == HELP) {
                 draw_help();
             }
-            tb_puts("le bac / the badge audio composer", &dcell, 8, 1);
         }
 
         if (global_mode == SEQUENCER) {
@@ -939,6 +910,11 @@ int main(int argc, char *argv[])
         case '.':
             edit_note->note = last_edit.note;
             edit_note->duty = last_edit.duty;
+            break;
+
+        case 'E':
+            emulate_shitty_badge_audio = !emulate_shitty_badge_audio;
+            redraw_setting = FULL;
             break;
 
         case '?':
