@@ -1,2 +1,3 @@
 #!/bin/bash
-mkdir -p songs && make && build/lebac "songs/$(date +%s).bac"
+songfile="${1:-songs/$(date +%s).bac}"
+mkdir -p songs && make && build/lebac "$songfile"
