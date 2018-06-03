@@ -112,7 +112,7 @@ void lebac_msg(char *format, ...)
     tb_puts(buffer, &dcell, 1, 21);
 }
 
-int audio_child(int * const pid_p)
+int audio_child(int * const pid_p, const char * const filename)
 {
     /* set up pipes to communicate with audio child */
     int pipefds[2];
@@ -128,8 +128,13 @@ int audio_child(int * const pid_p)
         close(pipefds[1]);
         dup2(pipefds[0], STDIN_FILENO);
         close(pipefds[0]);
-        execlp("out123", "out123", "--mono", "--encoding", "s16", "--rate", "38000", (char *) NULL);
-        execlp("aplay", "aplay", "--quiet", "-c", "1", "-f", "S16_LE", "-r", "38000", (char *) NULL);
+        if (filename) {
+            execlp("out123", "out123", "--mono", "--encoding", "s16", "--rate", "38000", "--wav", filename, (char *) NULL);
+            execlp("aplay", "aplay", "--quiet", "-c", "1", "-f", "S16_LE", "-r", "38000", filename, (char *) NULL);
+        } else {
+            execlp("out123", "out123", "--mono", "--encoding", "s16", "--rate", "38000", (char *) NULL);
+            execlp("aplay", "aplay", "--quiet", "-c", "1", "-f", "S16_LE", "-r", "38000", (char *) NULL);
+        }
     }
     if (pid_p != NULL)
         *pid_p = pid;
@@ -650,7 +655,18 @@ int main(int argc, char *argv[])
         case 'P':
             if (!fork()) {
                 /* TODO: send SIGTERM when parent dies */
-                int audio_pipe = audio_child(NULL);
+                int audio_pipe = audio_child(NULL, NULL);
+                audio(audio_pipe, 0);
+                exit(0);
+            }
+            break;
+
+        /* export song to wavfile */
+        case 'W':
+            lebac_msg("exported to /tmp/out.wav");
+            if (!fork()) {
+                /* TODO: send SIGTERM when parent dies */
+                int audio_pipe = audio_child(NULL, "/tmp/out.wav");
                 audio(audio_pipe, 0);
                 exit(0);
             }
@@ -660,7 +676,7 @@ int main(int argc, char *argv[])
         case 'p':
             if (!fork()) {
                 /* TODO: send SIGTERM when parent dies */
-                int audio_pipe = audio_child(NULL);
+                int audio_pipe = audio_child(NULL, NULL);
                 audio(audio_pipe, 1);
                 exit(0);
             }
