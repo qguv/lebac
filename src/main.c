@@ -37,6 +37,8 @@
     (MINVAL) \
 )
 
+#define MAX(X, Y) (((Y) > (X)) ? (Y) : (X))
+
 const char * const duties[] = {
     "!!",
     "50",
@@ -233,7 +235,7 @@ void audio(int audio_pipe, char just_one_page)
 
                     /* make math cheaper per sample by doing it upfront */
                     begin_low[channel] = cycle_samples[channel] >> 1;
-                    end_high[channel] = begin_low[channel] >> duty;
+                    end_high[channel] = MAX(begin_low[channel] >> duty, 1);
                     end_low[channel] = begin_low[channel] + end_high[channel];
 
                 } else if (note < 0) {
