@@ -197,11 +197,11 @@ void audio(int audio_pipe, char just_one_page)
 
             for (int i = 0; i < samples_per_step; i++) {
                 int16_t sample = 0;
-                char double_it = 0;
+                char lower_threshhold = 0;
                 for (int channel = 0; channel < 2; channel++) {
 
                     if (!play[channel]) {
-                        double_it = 1;
+                        lower_threshhold = 1;
                         continue;
                     }
 
@@ -211,9 +211,6 @@ void audio(int audio_pipe, char just_one_page)
                     if (cycle_pos[channel] >= ALEN(sin_table))
                         cycle_pos[channel] -= ALEN(sin_table);
                 }
-
-                if (double_it)
-                    sample <<= 1;
 
                 /* at this point, we're in two-and-a-half bit space: [-2, -1, 0, 1, 2 ]
                  *
@@ -232,10 +229,17 @@ void audio(int audio_pipe, char just_one_page)
                  * numbers up to INT16_MAX and all negative numbers down to
                  * INT16_MIN.
                  */
-                if (emulate_shitty_badge_audio)
-                    sample = (sample < -28000) ? INT16_MIN >> MERCY :
-                             (sample > 28000) ? INT16_MAX >> MERCY :
-                             0;
+                if (emulate_shitty_badge_audio) {
+                    sample = lower_threshhold ? (
+                        (sample < -15250) ? INT16_MIN >> MERCY :
+                        (sample > 15250) ? INT16_MAX >> MERCY :
+                        0
+                    ) : (
+                        (sample < -30500) ? INT16_MIN >> MERCY :
+                        (sample > 30500) ? INT16_MAX >> MERCY :
+                        0
+                    );
+                }
 
                 write(audio_pipe, (char *) &sample, sizeof(sample));
             }
