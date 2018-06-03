@@ -3,6 +3,8 @@
 
 #include "notes.h"
 #include "help.h"
+#include "sinhop.h"
+#include "sintable.h"
 
 #include <termbox.h>
 
@@ -35,6 +37,8 @@
 )
 
 #define MAX(X, Y) (((Y) > (X)) ? (Y) : (X))
+
+#define ALEN(X) (sizeof(X) / sizeof(X[0]))
 
 const char * const duties[] = {
     "!!",
@@ -134,17 +138,6 @@ int audio_child(int * const pid_p)
     return pipefds[1];
 }
 
-int samples_per_cycle(char note)
-{
-    if (note <= 0)
-        return 0;
-
-    double freq = note_freqs[note % 12];
-    for (int i = 0; i < note / 12; i++)
-        freq *= 2; /* wasting some cycles to get this right; errors accumulate */
-    return (double) RATE / freq + 0.5L;
-}
-
 /* call audio with the output of audio_child to play audio. you need a new
  * audio_child pipe each time. we will close the audio pipe for you when it's
  * done playing.
@@ -164,42 +157,33 @@ void audio(int audio_pipe, char just_one_page)
     const int samples_per_step = RATE * 15 / tempo;
 
     /* position of each wave in its oscillation */
-    int cycle_pos[2] = {0, 3};
+    float cycle_pos[2] = {0, 0};
+
+    float hop[2] = {0, 0};
 
     /* whether the wave is currently playing */
     char play[2] = {0, 0};
 
     /* scroll back to the first page */
     struct page_t *playing_page = page;
-    if (!just_one_page) {
+    if (!just_one_page)
         while (playing_page->prev != NULL)
             playing_page = playing_page->prev;
-    }
 
     while (playing_page) {
         for (int step = 0; step < 16; step++) {
-
-            /* wavelength, in samples */
-            int cycle_samples[2];
-
-            /* important points of the wavelength, in number of samples since the
-             * start of the wave */
-            int end_high[2], begin_low[2], end_low[2];
-
             for (int channel = 0; channel < 2; channel++) {
 
                 char note = playing_page->notes[step][channel].note;
+                /*
+                TODO: use duty cycle as sin volume
                 char duty = playing_page->notes[step][channel].duty;
+                */
 
                 if (note > 0) {
                     play[channel] = 1;
-                    cycle_samples[channel] = samples_per_cycle(note);
-
-                    /* make math cheaper per sample by doing it upfront */
-                    begin_low[channel] = cycle_samples[channel] >> 1;
-                    end_high[channel] = MAX(begin_low[channel] >> duty, 1);
-                    end_low[channel] = begin_low[channel] + end_high[channel];
-
+                    hop[channel] = sinhop_table[(int) note];
+                    cycle_pos[channel] = 0;
                 } else if (note < 0) {
                     play[channel] = 0;
                 }
@@ -208,35 +192,23 @@ void audio(int audio_pipe, char just_one_page)
 
             for (int i = 0; i < samples_per_step; i++) {
                 int16_t sample = 0;
+                char double_it = 0;
                 for (int channel = 0; channel < 2; channel++) {
 
-                    if (!play[channel])
+                    if (!play[channel]) {
+                        double_it = 1;
                         continue;
-
-                    int pos = cycle_pos[channel];
-
-                    /* first half of the wave */
-                    if (pos < begin_low[channel]) {
-
-                        /* within the high section */
-                        if (pos < end_high[channel]) {
-                            sample += INT16_MAX >> (1 + MERCY);
-                        }
-
-                    /* second half of the wave */
-                    } else {
-
-                        /* within the low section */
-                        if (pos < end_low[channel]) {
-                            sample += INT16_MIN >> (1 + MERCY);
-                        }
                     }
 
-                    cycle_pos[channel]++;
-                    if (cycle_pos[channel] >= cycle_samples[channel]) {
-                        cycle_pos[channel] = 0;
-                    }
+                    sample += sin_table[(int) cycle_pos[channel]];
+
+                    cycle_pos[channel] += hop[channel];
+                    if (cycle_pos[channel] >= ALEN(sin_table))
+                        cycle_pos[channel] -= ALEN(sin_table);
                 }
+
+                if (double_it)
+                    sample <<= 1;
 
                 /* at this point, we're in two-and-a-half bit space: [-2, -1, 0, 1, 2 ]
                  *
@@ -256,7 +228,9 @@ void audio(int audio_pipe, char just_one_page)
                  * INT16_MIN.
                  */
                 if (emulate_shitty_badge_audio)
-                    sample = QUANTIZE(sample, INT16_MIN >> MERCY, INT16_MAX >> MERCY);
+                    sample = (sample < -28000) ? INT16_MIN >> MERCY :
+                             (sample > 28000) ? INT16_MAX >> MERCY :
+                             0;
 
                 write(audio_pipe, (char *) &sample, sizeof(sample));
             }

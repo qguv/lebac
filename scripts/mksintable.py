@@ -9,7 +9,7 @@ def mksintable(length):
     if length > 0:
         print("    0", end="")
     if length > 1:
-        half_max_int = 1 << 14
+        half_max_int = (1 << 14) - 1;
         for i in range(1, length):
             el = int(sin(((2 * pi) / length) * i) * half_max_int)
             print(f",\n    {el}", end="")
