@@ -447,9 +447,9 @@ void save(char *songfile)
     while (saving_page) {
         int written = 0;
         int wrote = 0;
-        int to_write = sizeof(page->notes);
+        int to_write = sizeof(saving_page->notes);
         while (written < to_write) {
-            wrote = write(fd, ((char *) page->notes) + written, to_write - written);
+            wrote = write(fd, ((char *) saving_page->notes) + written, to_write - written);
             if (wrote < 0) {
                 if (errno == EINTR)
                     continue;
@@ -498,7 +498,7 @@ void load(char *songfile)
             /* free existing pages of pattern memory */
             while (page->prev)
                 page = page->prev;
-            while (page->next) {
+            while (page) {
                 tmp_page = page->next;
                 free(page);
                 page = tmp_page;
@@ -534,7 +534,7 @@ void load(char *songfile)
 
             /* file didn't end at a page boundary; free and abort */
             if (just_red <= 0) {
-                return;
+                break;
             }
 
             total_red += just_red;
@@ -952,6 +952,9 @@ int main(int argc, char *argv[])
         case 'D':
             load(songfile);
             lebac_msg("loaded %s", songfile);
+
+            /* update number of pages */
+            redraw_setting = FULL;
             break;
         }
     }
