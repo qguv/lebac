@@ -97,22 +97,13 @@ void lebac_msg(char *format, ...)
     for (i = 0; i < (int) sizeof(buffer) - 1; i++)
         buffer[i] = ' ';
     buffer[sizeof(buffer) - 1] = '\0';
-    tb_puts(buffer, &dcell, 1, 23);
+    tb_puts(buffer, &dcell, 1, 21);
 
     /* Fill in the status line with the new error message */
     va_start(arg_ptr, format);
     vsnprintf(buffer, sizeof(buffer), format, arg_ptr);
     va_end(arg_ptr);
-    tb_puts(buffer, &dcell, 1, 23);
-}
-
-void debug(const char * const s)
-{
-    static int y = 3;
-
-    tb_puts(s, &dcell, 10, y++);
-    if (y == 40)
-        y = 3;
+    tb_puts(buffer, &dcell, 1, 21);
 }
 
 int audio_child(int * const pid_p)
