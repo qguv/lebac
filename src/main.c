@@ -411,10 +411,8 @@ static void bump_lines_up_one(struct page_t *page, int line_within_page)
         page->notes[i][0] = page->notes[i - 1][0];
         page->notes[i][1] = page->notes[i - 1][1];
     }
-    page->notes[line_within_page][0].note = 0;
-    page->notes[line_within_page][0].duty = 0;
-    page->notes[line_within_page][1].note = 0;
-    page->notes[line_within_page][1].duty = 0;
+
+    memset(&page->notes[line_within_page], 0, sizeof(page->notes[0]));
 }
 
 static void delete_line(struct page_t *page, int line_within_page)
@@ -424,44 +422,52 @@ static void delete_line(struct page_t *page, int line_within_page)
         page->notes[i][0] = page->notes[i + 1][0];
         page->notes[i][1] = page->notes[i + 1][1];
     }
+
+    /* pull in a note from the next page */
     if (page->next) {
+
         /* copy the first line from next page to last line of this page */
         page->notes[15][0] = page->next->notes[0][0];
         page->notes[15][1] = page->next->notes[0][1];
+
         /* Delete first line of next page, recursively */
         delete_line(page->next, 0);
+
+    /* otherwise just blank it */
     } else {
-        /* No next page, fill in last line with zeroes */
-        page->notes[15][0].note = 0;
-        page->notes[15][0].duty = 0;
-        page->notes[15][1].note = 0;
-        page->notes[15][1].duty = 0;
+        memset(&page->notes[15], 0, sizeof(page->notes[15]));
     }
 }
 
 static void insert_line(struct page_t *page, int line_within_page)
 {
-    /* First make room on subsequent pages */
+    /* make room on subsequent pages, if any */
     if (page->next) {
+
         insert_line(page->next, 0);
+
         /* Copy last note of this page to first note of next page. */
         page->next->notes[0][0] = page->notes[15][0];
         page->next->notes[0][1] = page->notes[15][1];
-    } else { /* This is the last page */
+
+    /* otherwise it's the last page */
+    } else {
+
         /* Check if the last note on this page is unused. */
         struct note_t *n = &page->notes[15][0];
-        if (n[0].note != 0 || n[0].duty != 0 ||
-        n[1].note != 0 || n[1].duty != 0) {
-            /* Last not is not unused, so we have to make a new page. */
-            page->next = calloc(1, sizeof(*page->next));
+        if (n[0].note != 0 || n[0].duty != 0 || n[1].note != 0 || n[1].duty != 0) {
+
+            /* last note is used, so make a new page */
+            page->next = calloc(1, sizeof(struct page_t));
             page->next->prev = page;
-            page->next->next = NULL;
             num_pages++;
+
             /* Copy last note of this page to first note of next page. */
             page->next->notes[0][0] = page->notes[15][0];
             page->next->notes[0][1] = page->notes[15][1];
         }
     }
+
     /* Bump everything on this page up one */
     bump_lines_up_one(page, line_within_page);
 }
@@ -470,8 +476,10 @@ static void insert_lines(struct page_t *page, int line_within_page, int count)
 {
     if (count == 0)
         count = 1;
+
     for (int i = 0; i < count; i++)
         insert_line(page, line_within_page);
+
     tb_printf("Inserted %d new %s", count, count == 1 ? "line" : "lines");
 }
 
@@ -479,8 +487,10 @@ static void delete_lines(struct page_t *page, int line_within_page, int count)
 {
     if (count == 0)
         count = 1;
+
     for (int i = 0; i < count; i++)
         delete_line(page, line_within_page);
+
     draw_page_num();
     tb_printf("Deleted %d %s", count, count == 1 ? "line" : "lines");
 }
@@ -1236,14 +1246,17 @@ int main(int argc, char *argv[])
             }
             save(filename);
             break;
+
         case 'i':
             insert_lines(page, current_line, command_multiplier);
             command_multiplier = 0;
             break;
+
         case 'd':
             delete_lines(page, current_line, command_multiplier);
             command_multiplier = 0;
             break;
+
         case '0':
         case '1':
         case '2':
@@ -1256,6 +1269,7 @@ int main(int argc, char *argv[])
         case '9':
             command_multiplier = 10 * command_multiplier + event.ch - '0';
             break;
+
         case 'D':
             err = get_filename("load from");
             if (err) {
