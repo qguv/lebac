@@ -16,6 +16,8 @@ char *helptext[][2] = {
     {"X", "delete page"},
     {"i", "insert line(s)"},
     {"d", "delete line(s)"},
+    {"c", "copy line(s)"},
+    {"v", "paste line(s)"},
     {"", ""},
     {"song", ""},
     {"====", ""},

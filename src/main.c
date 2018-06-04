@@ -79,6 +79,8 @@ int current_line = 0;
 unsigned char tempo = 128;
 
 static int command_multiplier = 0;
+static struct note_t *yank_buffer = NULL;
+static int yank_buffer_size = 0;
 
 /* crunch into 1.5 bit space? */
 char emulate_shitty_badge_audio = 1;
@@ -472,6 +474,32 @@ static void insert_line(struct page_t *page, int line_within_page)
     bump_lines_up_one(page, line_within_page);
 }
 
+static void yank_lines(struct page_t *page, int line_within_page, int count,
+    struct note_t **yank_buf, int *yank_buf_size)
+{
+    int from, to, lines_copied = 0;
+    if (*yank_buf)
+        free(*yank_buf);
+    *yank_buf = calloc(1, sizeof(**yank_buf) * count * 2);
+    from = line_within_page;
+    for (to = 0; to < count * 2; to += 2) {
+        (*yank_buf)[to].note = page->notes[from][0].note;
+        (*yank_buf)[to].duty = page->notes[from][0].duty;
+        (*yank_buf)[to + 1].note = page->notes[from][1].note;
+        (*yank_buf)[to + 1].duty = page->notes[from][1].duty;
+        from++;
+        lines_copied++;
+        if (from > 15) {
+            from = 0;
+            page = page->next;
+            if (!page)
+                break;
+        }
+    }
+    *yank_buf_size = lines_copied;
+    return;
+}
+
 static void insert_lines(struct page_t *page, int line_within_page, int count)
 {
     if (count == 0)
@@ -486,8 +514,53 @@ static void delete_lines(struct page_t *page, int line_within_page, int count)
     if (count == 0)
         count = 1;
 
+    yank_lines(page, line_within_page, count, &yank_buffer, &yank_buffer_size);
     for (int i = 0; i < count; i++)
         delete_line(page, line_within_page);
+}
+
+static void do_yank_lines(struct page_t *page, int line_within_page, int count)
+{
+    if (count == 0)
+        count = 1;
+    yank_lines(page, line_within_page, count, &yank_buffer, &yank_buffer_size);
+    tb_printf("Yanked %d %s", count, count == 1 ? "line" : "lines");
+}
+
+static void paste_lines(struct page_t *page, int line_within_page, int count)
+{
+    int total = 0;
+
+    if (count == 0)
+       count = 1;
+    if (yank_buffer_size == 0 || !yank_buffer) {
+        tb_printf("0 lines pasted");
+        return;
+    }
+    for (int i = 0; i < count; i++) {
+        /* Make room for the new lines */
+        insert_lines(page, line_within_page, yank_buffer_size);
+        /* Copy the yank buffer into the new lines */
+        for (int j = 0; j < yank_buffer_size * 2; j += 2) {
+            page->notes[line_within_page][0].note = yank_buffer[j].note;
+            page->notes[line_within_page][0].duty = yank_buffer[j].duty;
+            page->notes[line_within_page][1].note = yank_buffer[j + 1].note;
+            page->notes[line_within_page][1].duty = yank_buffer[j + 1].duty;
+            line_within_page++;
+            total++;
+            if (line_within_page > 15) { /* Next page? */
+                if (!page->next) { /* There is no next page, so make one. */
+                   page->next = calloc(1, sizeof(*page->next));
+                   page->next->prev = page;
+                   page->next->next = NULL;
+                   num_pages++;
+                }
+                page = page->next;
+                line_within_page = 0;
+            }
+        }
+    }
+    tb_printf("Pasted %d %s", total, total == 1 ? "line" : "lines");
 }
 
 void save(char *songfile)
@@ -1253,6 +1326,17 @@ int main(int argc, char *argv[])
             delete_lines(page, current_line, command_multiplier);
             draw_page_num();
             tb_printf("Deleted %d %s", command_multiplier, command_multiplier == 1 ? "line" : "lines");
+            command_multiplier = 0;
+            break;
+
+        case 'v':
+            paste_lines(page, current_line, command_multiplier);
+            command_multiplier = 0;
+            draw_page_num();
+            break;
+
+        case 'c':
+            do_yank_lines(page, current_line, command_multiplier);
             command_multiplier = 0;
             break;
 
