@@ -40,6 +40,8 @@
 
 #define ALEN(X) (sizeof(X) / sizeof(X[0]))
 
+const char magic[] = "badge18";
+
 const char * const duties[] = {
     "!!",
     "50",
@@ -387,7 +389,7 @@ void save(char *songfile)
 {
     /* TODO allow filenames to be specified at load */
 
-    int fd = open(songfile, O_CREAT | O_RDWR, 0600);
+    int fd = open(songfile, O_CREAT | O_RDWR | O_TRUNC, 0600);
     if (fd < 0) {
         lebac_msg("%s: Can't open file: %s\n", songfile, strerror(errno));
         return;
@@ -397,6 +399,10 @@ void save(char *songfile)
     struct page_t *saving_page = page;
     while (saving_page->prev != NULL)
         saving_page = saving_page->prev;
+
+    write(fd, &magic, sizeof(magic));
+    write(fd, &tempo, 1);
+    write(fd, &emulate_shitty_badge_audio, 1);
 
     while (saving_page) {
         int written = 0;
@@ -418,6 +424,7 @@ void save(char *songfile)
     }
 
     close(fd);
+    lebac_msg("saved to %s", songfile);
 }
 
 void load(char *songfile)
@@ -432,8 +439,33 @@ void load(char *songfile)
     struct page_t *load_page = NULL;
     int num_load_pages = 0;
 
-    char peek;
+    unsigned char peek;
     int peek_ret;
+
+    for (int i = 0; i < (int) sizeof(magic); i++) {
+        peek_ret = read(fd, &peek, 1);
+        if (peek_ret != 1 || peek != magic[i]) {
+            close(fd);
+            lebac_msg("load failed: bad magic");
+            return;
+        }
+    }
+
+    peek_ret = read(fd, &peek, 1);
+    if (peek_ret != 1) {
+        close(fd);
+        lebac_msg("load failed: bad tempo");
+        return;
+    }
+    tempo = peek;
+
+    peek_ret = read(fd, &peek, 1);
+    if (peek_ret != 1 || (peek != 0 && peek != 1)) {
+        close(fd);
+        lebac_msg("load failed: bad emulate_shitty_badge_audio");
+        return;
+    }
+    emulate_shitty_badge_audio = peek;
 
     for (;;) {
 
@@ -441,12 +473,20 @@ void load(char *songfile)
         peek_ret = read(fd, &peek, 1);
 
         /* read error; free and abort */
-        if (peek_ret < 0 || peek_ret > 1) { /* how will it ever be > 1? */
+        if (peek_ret < 0) {
+            if (errno != 0)
+                lebac_msg("load failed: %s", strerror(errno));
             break;
 
-        /* file ended normally; replace current pattern with loaded pattern */
         } else if (peek_ret == 0) {
 
+            /* didn't read anything */
+            if (num_load_pages == 0) {
+                lebac_msg("load failed: file ended abruptly", songfile);
+                break;
+            }
+
+            /* file ended normally; replace current pattern with loaded pattern */
             close(fd);
 
             /* free existing pages of pattern memory */
@@ -465,6 +505,7 @@ void load(char *songfile)
             page_num = 1;
             num_pages = num_load_pages;
 
+            lebac_msg("loaded %s", songfile);
             return;
         }
 
@@ -488,6 +529,7 @@ void load(char *songfile)
 
             /* file didn't end at a page boundary; free and abort */
             if (just_red <= 0) {
+                lebac_msg("failed: file didn't end on a page boundary");
                 break;
             }
 
@@ -496,8 +538,6 @@ void load(char *songfile)
     }
 
     /* we get here on read errors */
-    if (errno != 0)
-        lebac_msg("%s: read error: %s", songfile, strerror(errno));
     close(fd);
     while (load_page) {
         tmp_page = load_page->prev;
@@ -916,15 +956,13 @@ int main(int argc, char *argv[])
 
         case 'S':
             save(songfile);
-            lebac_msg("saved to %s", songfile);
             break;
 
         case 'D':
             load(songfile);
-            lebac_msg("loaded %s", songfile);
-
-            /* update number of pages */
-            redraw_setting = FULL;
+            draw_page_num();
+            draw_tempo();
+            draw_emulated();
             break;
         }
     }
