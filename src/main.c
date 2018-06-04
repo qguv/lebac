@@ -78,6 +78,8 @@ int current_line = 0;
 
 unsigned char tempo = 128;
 
+static int command_multiplier = 0;
+
 /* crunch into 1.5 bit space? */
 char emulate_shitty_badge_audio = 1;
 
@@ -458,8 +460,25 @@ static void insert_line(struct page_t *page, int line_within_page)
     }
     /* Bump everything on this page up one */
     bump_lines_up_one(page, line_within_page);
-    tb_printf("Inserted new line");
+}
+
+static void insert_lines(struct page_t *page, int line_within_page, int count)
+{
+    if (count == 0)
+        count = 1;
+    for (int i = 0; i < count; i++)
+        insert_line(page, line_within_page);
+    tb_printf("Inserted %d new %s", count, count == 1 ? "line" : "lines");
+}
+
+static void delete_lines(struct page_t *page, int line_within_page, int count)
+{
+    if (count == 0)
+        count = 1;
+    for (int i = 0; i < count; i++)
+        delete_line(page, line_within_page);
     draw_page_num();
+    tb_printf("Deleted %d %s", count, count == 1 ? "line" : "lines");
 }
 
 void save(char *songfile)
@@ -1214,10 +1233,24 @@ int main(int argc, char *argv[])
             save(filename);
             break;
         case 'i':
-            insert_line(page, current_line);
+            insert_lines(page, current_line, command_multiplier);
+            command_multiplier = 0;
             break;
         case 'd':
-            delete_line(page, current_line);
+            delete_lines(page, current_line, command_multiplier);
+            command_multiplier = 0;
+            break;
+        case '0':
+        case '1':
+        case '2':
+        case '3':
+        case '4':
+        case '5':
+        case '6':
+        case '7':
+        case '8':
+        case '9':
+            command_multiplier = 10 * command_multiplier + event.ch - '0';
             break;
         case 'D':
             err = get_filename("load from");
