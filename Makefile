@@ -7,7 +7,7 @@ SINTABLE_LENGTH=128
 SAMPLE_RATE=38000
 
 build/lebac: build/termbox/src/libtermbox.a build/tables/sinhop.h build/tables/sintable.h src/*.c src/*.h Makefile
-	${CC} -static -D_POSIX_C_SOURCE=199309L -std=c11 src/main.c ${LIBS} ${ERROR_OPTS} -o $@
+	${CC} -static -D_POSIX_C_SOURCE=199309L -D_DEFAULT_SOURCE -std=c11 src/main.c ${LIBS} ${ERROR_OPTS} -o $@
 
 build/termbox/src/libtermbox.a: Makefile
 	mkdir -p build

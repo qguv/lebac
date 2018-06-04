@@ -17,6 +17,7 @@
 #include <string.h> // strerror()
 #include <errno.h> // errno
 #include <stdarg.h>
+#include <dirent.h> // readdir
 
 /* badge audio rate */
 #define RATE 38000
@@ -37,6 +38,7 @@
 )
 
 #define MAX(X, Y) (((Y) > (X)) ? (Y) : (X))
+#define MIN(X, Y) (((Y) < (X)) ? (Y) : (X))
 
 #define ALEN(X) (sizeof(X) / sizeof(X[0]))
 
@@ -558,6 +560,88 @@ void load(char *songfile)
     }
 }
 
+void complete_filename(void)
+{
+    /* keep track of the area we've written to for clearing next round */
+    static int xpos_max = 2;
+    static int ypos = 22;
+
+    /* clear completion area */
+    dcell.ch = ' ';
+    for (int x = 2; x < xpos_max; x++)
+        for (int y = 22; y < ypos + 1; y++)
+            tb_put_cell(x, y, &dcell);
+
+    int xpos = 2;
+    ypos = 22;
+
+    /* find the last directory */
+    int last_slash = -1;
+    char c;
+    for (int i = 0; i < (int) sizeof(filename) && (c = filename[i]); i++)
+        if (c == '/')
+            last_slash = i;
+
+    char dirname[128] = ".";
+    const char *leaf = filename;
+    if (last_slash > 0) {
+        strncpy(dirname, filename, MIN(last_slash + 1, (int) sizeof(dirname)));
+        leaf = filename + last_slash + 1;
+    }
+
+    DIR *d;
+    struct dirent *e;
+    d = opendir(dirname);
+
+    if (d) {
+        char the_only_entry[128];
+
+        int entries = 0;
+        while ((e = readdir(d))) {
+
+            if (e->d_name[0] == '.')
+                continue;
+
+            if (strncmp(leaf, e->d_name, strlen(leaf)) != 0)
+                continue;
+
+            if (xpos > 40) {
+                xpos_max = MAX(xpos_max, xpos);
+                ypos++;
+                xpos = 2;
+            }
+
+            dcell.ch = ' ';
+            tb_put_cell(xpos++, ypos, &dcell);
+
+            const char *s = e->d_name;
+            char c;
+            while ((c = *(s++))) {
+                dcell.ch = c;
+                tb_put_cell(xpos++, ypos, &dcell);
+            }
+
+            if (e->d_type == DT_DIR) {
+                dcell.ch = '/';
+                tb_put_cell(xpos++, ypos, &dcell);
+            }
+
+            entries++;
+
+            if (entries == 1) {
+                strncpy(the_only_entry, e->d_name, sizeof(the_only_entry));
+                if (e->d_type == DT_DIR)
+                    strcat(the_only_entry, "/");
+            }
+        }
+
+        closedir(d);
+
+        if (entries == 1)
+            strncpy(filename + last_slash + 1, the_only_entry, sizeof(filename) - last_slash - 1);
+    }
+}
+
 void clear_filename(void)
 {
     for (int i = 0; i < (int) sizeof(filename); i++)
@@ -609,6 +693,8 @@ char get_filename(const char * const prompt)
 
             case TB_KEY_BACKSPACE:
             case TB_KEY_BACKSPACE2:
+                dcell.ch = ' ';
+                tb_put_cell(xpos - 1, 21, &dcell);
                 filename[i - 1] = 0;
                 continue;
 
@@ -617,6 +703,10 @@ char get_filename(const char * const prompt)
 
             case TB_KEY_CTRL_A:
                 clear_filename();
+                continue;
+
+            case TB_KEY_TAB:
+                complete_filename();
                 continue;
         }
     }
