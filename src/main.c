@@ -479,8 +479,6 @@ static void insert_lines(struct page_t *page, int line_within_page, int count)
 
     for (int i = 0; i < count; i++)
         insert_line(page, line_within_page);
-
-    tb_printf("Inserted %d new %s", count, count == 1 ? "line" : "lines");
 }
 
 static void delete_lines(struct page_t *page, int line_within_page, int count)
@@ -490,9 +488,6 @@ static void delete_lines(struct page_t *page, int line_within_page, int count)
 
     for (int i = 0; i < count; i++)
         delete_line(page, line_within_page);
-
-    draw_page_num();
-    tb_printf("Deleted %d %s", count, count == 1 ? "line" : "lines");
 }
 
 void save(char *songfile)
@@ -1249,11 +1244,15 @@ int main(int argc, char *argv[])
 
         case 'i':
             insert_lines(page, current_line, command_multiplier);
+            draw_page_num();
+            tb_printf("Inserted %d new %s", command_multiplier, command_multiplier == 1 ? "line" : "lines");
             command_multiplier = 0;
             break;
 
         case 'd':
             delete_lines(page, current_line, command_multiplier);
+            draw_page_num();
+            tb_printf("Deleted %d %s", command_multiplier, command_multiplier == 1 ? "line" : "lines");
             command_multiplier = 0;
             break;
 
