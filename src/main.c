@@ -22,7 +22,7 @@
 #define RATE 38000
 
 /* more mercy == less volume */
-#define MERCY 2
+#define MERCY 3
 
 #define TEMPO_MAX 255
 #define TEMPO_MIN 16
@@ -235,8 +235,8 @@ void audio(int audio_pipe, char just_one_page)
                         (sample > 15250) ? INT16_MAX >> MERCY :
                         0
                     ) : (
-                        (sample < -30500) ? INT16_MIN >> MERCY :
-                        (sample > 30500) ? INT16_MAX >> MERCY :
+                        (sample < -14000) ? INT16_MIN >> MERCY :
+                        (sample > 14000) ? INT16_MAX >> MERCY :
                         0
                     );
                 }
