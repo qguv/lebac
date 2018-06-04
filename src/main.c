@@ -95,7 +95,7 @@ void tb_puts(const char * const s, struct tb_cell *cell, int x, int y)
     }
 }
 
-void lebac_msg(char *format, ...)
+void tb_printf(char *format, ...)
 {
     int i;
     char buffer[80];
@@ -392,7 +392,7 @@ void draw_help(void)
 
 void draw_not_quit(void)
 {
-    lebac_msg("The quit key is ctrl-c");
+    tb_printf("The quit key is ctrl-c");
 }
 
 void save(char *songfile)
@@ -401,7 +401,7 @@ void save(char *songfile)
 
     int fd = open(songfile, O_CREAT | O_RDWR | O_TRUNC, 0600);
     if (fd < 0) {
-        lebac_msg("%s: Can't open file: %s\n", songfile, strerror(errno));
+        tb_printf("%s: Can't open file: %s\n", songfile, strerror(errno));
         return;
     }
 
@@ -423,7 +423,7 @@ void save(char *songfile)
             if (wrote < 0) {
                 if (errno == EINTR)
                     continue;
-                lebac_msg("%s: write failed: %s", songfile, strerror(errno));
+                tb_printf("%s: write failed: %s", songfile, strerror(errno));
                 break;
             }
 
@@ -434,7 +434,7 @@ void save(char *songfile)
     }
 
     close(fd);
-    lebac_msg("saved to %s", songfile);
+    tb_printf("saved to %s", songfile);
 }
 
 void load(char *songfile)
@@ -442,7 +442,7 @@ void load(char *songfile)
     /* TODO allow filenames to be specified at load */
     int fd = open(songfile, O_RDONLY);
     if (fd < 0) {
-        lebac_msg("%s: Cannot open: %s", songfile, strerror(errno));
+        tb_printf("%s: Cannot open: %s", songfile, strerror(errno));
         return;
     }
 
@@ -456,7 +456,7 @@ void load(char *songfile)
         peek_ret = read(fd, &peek, 1);
         if (peek_ret != 1 || peek != magic[i]) {
             close(fd);
-            lebac_msg("load failed: bad magic");
+            tb_printf("load failed: bad magic");
             return;
         }
     }
@@ -464,7 +464,7 @@ void load(char *songfile)
     peek_ret = read(fd, &peek, 1);
     if (peek_ret != 1) {
         close(fd);
-        lebac_msg("load failed: bad tempo");
+        tb_printf("load failed: bad tempo");
         return;
     }
     tempo = peek;
@@ -472,7 +472,7 @@ void load(char *songfile)
     peek_ret = read(fd, &peek, 1);
     if (peek_ret != 1 || (peek != 0 && peek != 1)) {
         close(fd);
-        lebac_msg("load failed: bad emulate_shitty_badge_audio");
+        tb_printf("load failed: bad emulate_shitty_badge_audio");
         return;
     }
     emulate_shitty_badge_audio = peek;
@@ -485,14 +485,14 @@ void load(char *songfile)
         /* read error; free and abort */
         if (peek_ret < 0) {
             if (errno != 0)
-                lebac_msg("load failed: %s", strerror(errno));
+                tb_printf("load failed: %s", strerror(errno));
             break;
 
         } else if (peek_ret == 0) {
 
             /* didn't read anything */
             if (num_load_pages == 0) {
-                lebac_msg("load failed: file ended abruptly", songfile);
+                tb_printf("load failed: file ended abruptly", songfile);
                 break;
             }
 
@@ -515,7 +515,7 @@ void load(char *songfile)
             page_num = 1;
             num_pages = num_load_pages;
 
-            lebac_msg("loaded %s", songfile);
+            tb_printf("loaded %s", songfile);
             return;
         }
 
@@ -539,7 +539,7 @@ void load(char *songfile)
 
             /* file didn't end at a page boundary; free and abort */
             if (just_red <= 0) {
-                lebac_msg("failed: file didn't end on a page boundary");
+                tb_printf("failed: file didn't end on a page boundary");
                 break;
             }
 
@@ -613,8 +613,10 @@ int main(int argc, char *argv[])
         redraw_setting = NORMAL;
 
         err = tb_poll_event(&event);
-        if (err < 0)
-            lebac_msg("termbox event error :(  ");
+        if (err < 0) {
+            tb_printf("termbox event error :(  ");
+            continue;
+        }
 
         if (event.type == TB_EVENT_RESIZE) {
             redraw_setting = FULL;
@@ -641,7 +643,7 @@ int main(int argc, char *argv[])
             }
 
             /* quit request issued? */
-            lebac_msg("press again to quit     ");
+            tb_printf("press again to quit     ");
             quit_request = 1;
             continue;
 
@@ -715,7 +717,7 @@ int main(int argc, char *argv[])
 
         /* export song to wavfile */
         case 'W':
-            lebac_msg("exported to /tmp/out.wav");
+            tb_printf("exported to /tmp/out.wav");
             if (!fork()) {
                 /* TODO: send SIGTERM when parent dies */
                 int audio_pipe = audio_child(NULL, "/tmp/out.wav");
