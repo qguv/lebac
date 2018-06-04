@@ -399,6 +399,47 @@ void draw_not_quit(void)
     tb_printf("The quit key is ctrl-c");
 }
 
+static void bump_lines_up_one(struct page_t *page, int line_within_page)
+{
+    for (int i = 15; i > line_within_page; i--) {
+        page->notes[i][0] = page->notes[i - 1][0];
+        page->notes[i][1] = page->notes[i - 1][1];
+    }
+    page->notes[line_within_page][0].note = 0;
+    page->notes[line_within_page][0].duty = 0;
+    page->notes[line_within_page][1].note = 0;
+    page->notes[line_within_page][1].duty = 0;
+}
+
+static void insert_line(struct page_t *page, int line_within_page)
+{
+    /* First make room on subsequent pages */
+    if (page->next) {
+        insert_line(page->next, 0);
+        /* Copy last note of this page to first note of next page. */
+        page->next->notes[0][0] = page->notes[15][0];
+        page->next->notes[0][1] = page->notes[15][1];
+    } else { /* This is the last page */
+        /* Check if the last note on this page is unused. */
+        struct note_t *n = &page->notes[15][0];
+        if (n[0].note != 0 || n[0].duty != 0 ||
+        n[1].note != 0 || n[1].duty != 0) {
+            /* Last not is not unused, so we have to make a new page. */
+            page->next = calloc(1, sizeof(*page->next));
+            page->next->prev = page;
+            page->next->next = NULL;
+            num_pages++;
+            /* Copy last note of this page to first note of next page. */
+            page->next->notes[0][0] = page->notes[15][0];
+            page->next->notes[0][1] = page->notes[15][1];
+        }
+    }
+    /* Bump everything on this page up one */
+    bump_lines_up_one(page, line_within_page);
+    tb_printf("Inserted new line");
+    draw_page_num();
+}
+
 void save(char *songfile)
 {
     /* TODO allow filenames to be specified at load */
@@ -1150,7 +1191,9 @@ int main(int argc, char *argv[])
             }
             save(filename);
             break;
-
+        case 'i':
+            insert_line(page, current_line);
+            break;
         case 'D':
             err = get_filename("load from");
             if (err) {

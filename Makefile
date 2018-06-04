@@ -1,5 +1,5 @@
 CC=gcc
-ERROR_OPTS=-Wall -Wpedantic -Wextra -Werror
+ERROR_OPTS=-Wall -Wpedantic -Wextra -Werror -g
 LIBS=-Ibuild/tables -Itermbox/src -Lbuild/termbox/src -ltermbox -lrt
 OUTPUT=build/lebac
 
