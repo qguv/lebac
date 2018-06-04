@@ -411,6 +411,28 @@ static void bump_lines_up_one(struct page_t *page, int line_within_page)
     page->notes[line_within_page][1].duty = 0;
 }
 
+static void delete_line(struct page_t *page, int line_within_page)
+{
+    /* Delete the line from this page, bumping down subsequent lines from this page */
+    for (int i = line_within_page; i < 15; i++) {
+        page->notes[i][0] = page->notes[i + 1][0];
+        page->notes[i][1] = page->notes[i + 1][1];
+    }
+    if (page->next) {
+        /* copy the first line from next page to last line of this page */
+        page->notes[15][0] = page->next->notes[0][0];
+        page->notes[15][1] = page->next->notes[0][1];
+        /* Delete first line of next page, recursively */
+        delete_line(page->next, 0);
+    } else {
+        /* No next page, fill in last line with zeroes */
+        page->notes[15][0].note = 0;
+        page->notes[15][0].duty = 0;
+        page->notes[15][1].note = 0;
+        page->notes[15][1].duty = 0;
+    }
+}
+
 static void insert_line(struct page_t *page, int line_within_page)
 {
     /* First make room on subsequent pages */
@@ -1193,6 +1215,9 @@ int main(int argc, char *argv[])
             break;
         case 'i':
             insert_line(page, current_line);
+            break;
+        case 'd':
+            delete_line(page, current_line);
             break;
         case 'D':
             err = get_filename("load from");
