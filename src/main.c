@@ -298,32 +298,42 @@ void draw_note_columns(enum column_t selected_column)
     dark.fg = TB_DEFAULT;
     dark.bg = TB_DEFAULT;
 
+    struct tb_cell bright_bold;
+    bright_bold.fg = TB_DEFAULT | TB_BOLD;
+    bright_bold.bg = TB_BLACK;
+
+    struct tb_cell dark_bold;
+    dark_bold.fg = TB_DEFAULT | TB_BOLD;
+    dark_bold.bg = TB_DEFAULT;
+
     struct tb_cell *cell;
 
     for (int row = 0; row < 16; row++) {
 
-        cell = (row % 4 == 0) ? &bright : &dark;
+        const char is_quarter_note = (row % 4 == 0);
+        const char is_current_line = (row == current_line);
+        const char left_sel = is_current_line && selected_column == LEFT;
+        const char right_sel = is_current_line && selected_column == RIGHT;
+
+        cell = is_quarter_note
+            ? is_current_line ? &bright_bold : &bright
+            : is_current_line ? &dark_bold : &dark;
 
         /* note columns */
         for (int i = 0; i < 2; i++)
             tb_put_note(&page->notes[row][i], cell, 9 * i + 3, row + 4);
 
-        /* line number or left arrow */
-        const char is_current_line = (row == current_line);
-        const char left_arrow = is_current_line && selected_column == LEFT;
-        const char right_arrow = is_current_line && selected_column == RIGHT;
-
-        dcell.ch = (left_arrow) ? '-' : "0123456789abcdef"[row];
+        dcell.ch = (left_sel) ? '-' : "0123456789abcdef"[row];
         tb_put_cell(0, row + 4, &dcell);
 
         /* arrow blits over line number */
-        dcell.ch = (left_arrow) ? '>' : ' ';
+        dcell.ch = (left_sel) ? '>' : ' ';
         tb_put_cell(1, row + 4, &dcell);
 
         /* right arrow */
-        dcell.ch = (right_arrow) ? '<': ' ';
+        dcell.ch = (right_sel) ? '<': ' ';
         tb_put_cell(20, row + 4, &dcell);
-        dcell.ch = (right_arrow) ? '-': ' ';
+        dcell.ch = (right_sel) ? '-': ' ';
         tb_put_cell(21, row + 4, &dcell);
     }
 }
@@ -793,7 +803,7 @@ int main(int argc, char *argv[])
                 }
                 page = page->next;
                 page_num++;
-                redraw_setting = FULL;
+                draw_page_num();
                 current_line = 0;
             } else {
                 current_line++;
@@ -806,7 +816,7 @@ int main(int argc, char *argv[])
                 if (page_num > 1) {
                     page = page->prev;
                     page_num--;
-                    redraw_setting = FULL;
+                    draw_page_num();
                     current_line = 15;
                 }
             } else {
@@ -823,7 +833,7 @@ int main(int argc, char *argv[])
             }
             page = page->next;
             page_num++;
-            redraw_setting = FULL;
+            draw_page_num();
             break;
 
         /* prev page */
@@ -831,7 +841,7 @@ int main(int argc, char *argv[])
             if (page_num > 1) {
                 page = page->prev;
                 page_num--;
-                redraw_setting = FULL;
+                draw_page_num();
             }
             break;
 
@@ -870,16 +880,13 @@ int main(int argc, char *argv[])
         /* delete current page */
         case 'X':
             if (num_pages > 1) {
+                num_pages--;
 
                 /* introduce the neighbors to each other */
                 if (page->next)
                     page->next->prev = page->prev;
                 if (page->prev)
                     page->prev->next = page->next;
-
-                /* and get your records in order */
-                num_pages--;
-                redraw_setting = FULL;
 
                 /* now you can die in peace */
                 if ((tmp_page = page->prev)) {
@@ -894,6 +901,8 @@ int main(int argc, char *argv[])
                     free(page);
                     page = tmp_page;
                 }
+
+                draw_page_num();
             }
             break;
 
@@ -946,7 +955,7 @@ int main(int argc, char *argv[])
 
         case 'E':
             emulate_shitty_badge_audio = !emulate_shitty_badge_audio;
-            redraw_setting = FULL;
+            draw_emulated();
             break;
 
         case '?':
