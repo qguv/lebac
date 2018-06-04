@@ -66,6 +66,8 @@ struct page_t {
     struct page_t *next, *prev;
 };
 
+char filename[128];
+
 struct page_t *page, *tmp_page;
 int page_num = 1;
 int num_pages = 1;
@@ -556,11 +558,87 @@ void load(char *songfile)
     }
 }
 
+void clear_filename(void)
+{
+    for (int i = 0; i < (int) sizeof(filename); i++)
+        filename[i] = '\0';
+}
+
+/* returns 1 on error */
+char get_filename(const char * const prompt)
+{
+    /* we get our own event loop, since we hijack user input */
+    for (;;) {
+        int xpos = 1;
+
+        char c;
+        const char *s = prompt;
+        while ((c = *(s++))) {
+            dcell.ch = c;
+            tb_put_cell(xpos++, 21, &dcell);
+        }
+
+        dcell.ch = ':';
+        tb_put_cell(xpos++, 21, &dcell);
+
+        dcell.ch = ' ';
+        tb_put_cell(xpos++, 21, &dcell);
+
+        int i;
+        for (i = 0; (c = filename[i]); i++) {
+            dcell.ch = c;
+            tb_put_cell(xpos++, 21, &dcell);
+        }
+
+        tb_present();
+
+        struct tb_event event;
+        int err = tb_poll_event(&event);
+        if (err < 0 || event.type != TB_EVENT_KEY) {
+            continue;
+        }
+
+        if (event.ch) {
+            filename[i] = event.ch;
+
+        } else switch (event.key) {
+
+            case TB_KEY_ESC:
+            case TB_KEY_CTRL_C:
+                return 1;
+
+            case TB_KEY_BACKSPACE:
+            case TB_KEY_BACKSPACE2:
+                filename[i - 1] = 0;
+                continue;
+
+            case TB_KEY_ENTER:
+                return 0;
+
+            case TB_KEY_CTRL_A:
+                clear_filename();
+                continue;
+        }
+    }
+}
+
 int main(int argc, char *argv[])
 {
-    if (argc != 2)
-        die("Usage: lebac [file]\n");
-    char *songfile = argv[1];
+    if (argc > 1) {
+        for (int i = 1; i < argc; i++) {
+            if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
+                fprintf(stderr, "Usage: lebac [songfile]\n");
+                exit(0);
+            }
+        }
+    }
+
+    char cli_load_song = argc > 1;
+    if (cli_load_song) {
+        char c, *s = argv[1];
+        for (int i = 0; i < (int) sizeof(filename) && (c = *s); s++)
+            filename[i] = c;
+    }
 
     int err = tb_init();
     if (err) {
@@ -590,10 +668,18 @@ int main(int argc, char *argv[])
 
     struct note_t *edit_note;
 
+    clear_filename();
+
     for (;;) {
 
         if (redraw_setting == FULL) {
             tb_clear();
+
+            if (cli_load_song) {
+                cli_load_song = 0;
+                load(argv[1]);
+            }
+
             if (global_mode == SEQUENCER) {
                 draw_page_num();
                 draw_tempo();
@@ -686,6 +772,7 @@ int main(int argc, char *argv[])
                 break;
 
             /* delete this note */
+            case TB_KEY_BACKSPACE:
             case TB_KEY_BACKSPACE2:
             case TB_KEY_DELETE:
                 if (edit_note->note > 0) {
@@ -966,11 +1053,21 @@ int main(int argc, char *argv[])
             break;
 
         case 'S':
-            save(songfile);
+            err = get_filename("save to");
+            if (err) {
+                tb_printf("save cancelled");
+                break;
+            }
+            save(filename);
             break;
 
         case 'D':
-            load(songfile);
+            err = get_filename("load from");
+            if (err) {
+                tb_printf("load cancelled");
+                break;
+            }
+            load(filename);
             draw_page_num();
             draw_tempo();
             draw_emulated();
