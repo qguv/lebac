@@ -25,6 +25,7 @@ char *helptext[][2] = {
     {"S/D", "save / load song from file"},
     {"W", "export audio to wavfile"},
     {"", ""},
+    {"", ""},
     {"program", ""},
     {"=======", ""},
     {"?", "show help"},

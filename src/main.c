@@ -385,18 +385,14 @@ void draw_help(void)
     cell.fg = TB_DEFAULT | TB_BOLD;
     cell.bg = TB_DEFAULT;
 
-    tb_puts("HELP", &cell, 1, 1);
-
-    cell.bg = TB_DEFAULT;
-
     for (int i = 0; helptext[i][0]; i++) {
         if (strcmp(helptext[i][1], "") == 0)
            col = 0;
         cell.fg = TB_DEFAULT | TB_BOLD;
-        tb_puts(helptext[i][0], &cell, 1 + 40 * col, row + 3);
+        tb_puts(helptext[i][0], &cell, 1 + 40 * col, row + 1);
 
         cell.fg = TB_DEFAULT;
-        tb_puts(helptext[i][1], &cell, 8 + 40 * col, row + 3);
+        tb_puts(helptext[i][1], &cell, 8 + 40 * col, row + 1);
         if (strcmp(helptext[i][1], "") != 0)
            col = !col;
         if (!col)
