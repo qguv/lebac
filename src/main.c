@@ -290,11 +290,11 @@ void draw_note_columns(enum column_t selected_column)
 {
     struct tb_cell bright;
     bright.fg = TB_DEFAULT;
-    bright.bg = TB_CYAN;
+    bright.bg = TB_BLACK;
 
     struct tb_cell dark;
     dark.fg = TB_DEFAULT;
-    dark.bg = TB_BLACK;
+    dark.bg = TB_DEFAULT;
 
     struct tb_cell *cell;
 
@@ -333,11 +333,10 @@ void draw_tempo(void)
     cell.bg = TB_DEFAULT;
 
     char s[4];
-    tb_puts("Tempo", &cell, 9, 1);
-
-    cell.bg = TB_MAGENTA;
     snprintf(s, sizeof(s), "%3d", tempo);
-    tb_puts(s, &cell, 15, 1);
+    tb_puts(s, &cell, 3, 2);
+
+    tb_puts("bpm", &cell, 7, 2);
 }
 
 void draw_page_num(void)
@@ -347,9 +346,8 @@ void draw_page_num(void)
     cell.bg = TB_DEFAULT;
 
     char s[8];
-    cell.bg = TB_MAGENTA;
     snprintf(s, sizeof(s), "%02x / %02x", page_num, num_pages);
-    tb_puts(s, &cell, 0, 1);
+    tb_puts(s, &cell, 12, 2);
 }
 
 void draw_emulated(void)
@@ -358,14 +356,14 @@ void draw_emulated(void)
     cell.fg = TB_DEFAULT | TB_BOLD;
     cell.bg = TB_DEFAULT;
 
-    tb_puts(emulate_shitty_badge_audio ? "EMU ON" : "no emu", &cell, 20, 1);
+    tb_puts(emulate_shitty_badge_audio ? "EMU  ON" : "EMU off", &cell, 3, 1);
 }
 
 void draw_help(void)
 {
     struct tb_cell cell;
     cell.fg = TB_DEFAULT | TB_BOLD;
-    cell.bg = TB_MAGENTA;
+    cell.bg = TB_DEFAULT;
 
     tb_puts("HELP", &cell, 1, 1);
 
