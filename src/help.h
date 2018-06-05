@@ -18,6 +18,8 @@ char *helptext[][2] = {
     {"d", "delete line(s)"},
     {"c", "copy line(s)"},
     {"v", "paste line(s)"},
+    {"ctrl-Z", "Undo" },
+    {"", ""},
     {"", ""},
     {"song", ""},
     {"====", ""},

@@ -81,6 +81,10 @@ unsigned char tempo = 128;
 static int command_multiplier = 0;
 static struct note_t *yank_buffer = NULL;
 static int yank_buffer_size = 0;
+#define MAX_UNDO_BUFFERS 100
+static struct note_t *undo_buffer[MAX_UNDO_BUFFERS] = { 0 };
+static int undo_buffer_size[MAX_UNDO_BUFFERS] = { 0 };
+static int num_undo_buffers = 0;
 
 /* crunch into 1.5 bit space? */
 char emulate_shitty_badge_audio = 1;
@@ -153,11 +157,24 @@ int audio_child(int * const pid_p, const char * const filename)
     return pipefds[1];
 }
 
+/* Given a page, backtrack to the first page and return it */
 static struct page_t *find_first_page(struct page_t *page)
 {
     while (page->prev != NULL)
         page = page->prev;
     return page;
+}
+
+/* Given a page, count the lines up to and including the last page. */
+static int count_lines(struct page_t *page)
+{
+    int count = 0;
+
+    while (page) {
+        count += 16;
+        page = page->next;
+    }
+    return count;
 }
 
 /* call audio with the output of audio_child to play audio. you need a new
@@ -506,20 +523,39 @@ static void yank_lines(struct page_t *page, int line_within_page, int count,
     return;
 }
 
-static void insert_lines(struct page_t *page, int line_within_page, int count)
+static void take_undo_snapshot(struct page_t *page)
+{
+    int count;
+
+    if (num_undo_buffers == MAX_UNDO_BUFFERS) {
+        /* We have maxed out our undo buffers, throw away the oldest one. */
+        free(undo_buffer[0]);
+        memmove(&undo_buffer[0], &undo_buffer[1], (MAX_UNDO_BUFFERS - 1) * sizeof(*undo_buffer));
+        undo_buffer[MAX_UNDO_BUFFERS - 1] = NULL;
+        num_undo_buffers--;
+    }
+    page = find_first_page(page);
+    count = count_lines(page);
+    yank_lines(page, 0, count, &undo_buffer[num_undo_buffers], &undo_buffer_size[num_undo_buffers]);
+    num_undo_buffers++;
+}
+
+static void insert_lines(struct page_t *page, int line_within_page, int count, int take_snapshot)
 {
     if (count == 0)
         count = 1;
-
+    if (take_snapshot)
+        take_undo_snapshot(page);
     for (int i = 0; i < count; i++)
         insert_line(page, line_within_page);
 }
 
-static void delete_lines(struct page_t *page, int line_within_page, int count)
+static void delete_lines(struct page_t *page, int line_within_page, int count, int take_snapshot)
 {
     if (count == 0)
         count = 1;
-
+    if (take_snapshot)
+        take_undo_snapshot(page);
     yank_lines(page, line_within_page, count, &yank_buffer, &yank_buffer_size);
     for (int i = 0; i < count; i++)
         delete_line(page, line_within_page);
@@ -533,25 +569,28 @@ static void do_yank_lines(struct page_t *page, int line_within_page, int count)
     tb_printf("Yanked %d %s", count, count == 1 ? "line" : "lines");
 }
 
-static void paste_lines(struct page_t *page, int line_within_page, int count)
+static void paste_lines(struct page_t *page, int line_within_page, int count,
+    struct note_t *buffer, int buffer_size, int take_snapshot)
 {
     int total = 0;
 
     if (count == 0)
        count = 1;
-    if (yank_buffer_size == 0 || !yank_buffer) {
+    if (take_snapshot)
+        take_undo_snapshot(page);
+    if (buffer_size == 0 || !buffer) {
         tb_printf("0 lines pasted");
         return;
     }
     for (int i = 0; i < count; i++) {
         /* Make room for the new lines */
-        insert_lines(page, line_within_page, yank_buffer_size);
+        insert_lines(page, line_within_page, buffer_size, 0);
         /* Copy the yank buffer into the new lines */
-        for (int j = 0; j < yank_buffer_size * 2; j += 2) {
-            page->notes[line_within_page][0].note = yank_buffer[j].note;
-            page->notes[line_within_page][0].duty = yank_buffer[j].duty;
-            page->notes[line_within_page][1].note = yank_buffer[j + 1].note;
-            page->notes[line_within_page][1].duty = yank_buffer[j + 1].duty;
+        for (int j = 0; j < buffer_size * 2; j += 2) {
+            page->notes[line_within_page][0].note = buffer[j].note;
+            page->notes[line_within_page][0].duty = buffer[j].duty;
+            page->notes[line_within_page][1].note = buffer[j + 1].note;
+            page->notes[line_within_page][1].duty = buffer[j + 1].duty;
             line_within_page++;
             total++;
             if (line_within_page > 15) { /* Next page? */
@@ -567,6 +606,34 @@ static void paste_lines(struct page_t *page, int line_within_page, int count)
         }
     }
     tb_printf("Pasted %d %s", total, total == 1 ? "line" : "lines");
+}
+
+static void do_paste_lines(struct page_t *page, int line_within_page, int count)
+{
+    paste_lines(page, line_within_page, count, yank_buffer, yank_buffer_size, 1);
+}
+
+static void do_undo(struct page_t *page)
+{
+    int count;
+
+    if (num_undo_buffers <= 0) {
+        tb_printf("Can't undo, already at oldest preserved state.");
+        return;
+    }
+    /* Delete everything */
+    page = find_first_page(page);
+    count = count_lines(page);
+    for (int i = 0; i < count; i++)
+        delete_line(page, 0);
+    num_pages = 1;
+    /* Paste everything from current undo buffer */
+    paste_lines(page, 0, 1, undo_buffer[num_undo_buffers - 1], undo_buffer_size[num_undo_buffers - 1], 0);
+    free(undo_buffer[num_undo_buffers - 1]);
+    undo_buffer[num_undo_buffers - 1] = NULL;
+    undo_buffer_size[num_undo_buffers - 1] = 0;
+    num_undo_buffers--;
+    tb_printf("Undo. %d older states remain preserved", num_undo_buffers);
 }
 
 char find_first_note(const struct page_t **searching_page, char *line)
@@ -1161,11 +1228,16 @@ int main(int argc, char *argv[])
             case TB_KEY_BACKSPACE:
             case TB_KEY_BACKSPACE2:
             case TB_KEY_DELETE:
+                take_undo_snapshot(page);
                 if (edit_note->note > 0) {
                     last_edit.note = edit_note->note;
                     last_edit.duty = edit_note->duty;
                 }
                 edit_note->note = 0;
+                break;
+
+            case TB_KEY_CTRL_Z:
+                do_undo(page);
                 break;
             }
         }
@@ -1216,6 +1288,7 @@ int main(int argc, char *argv[])
 
         /* clear this page */
         case 'C':
+            take_undo_snapshot(page);
             for (int i = 0; i < 16; i++) {
                 for (int channel = 0; channel < 2; channel++) {
                     page->notes[i][channel].note = 0;
@@ -1247,6 +1320,7 @@ int main(int argc, char *argv[])
 
         /* jump down an octave */
         case 'H':
+            take_undo_snapshot(page);
             if (edit_note->note <= 0) {
                 edit_note->note = last_edit.note;
                 edit_note->duty = last_edit.duty;
@@ -1262,6 +1336,7 @@ int main(int argc, char *argv[])
 
         /* decrease note */
         case 'h':
+            take_undo_snapshot(page);
             if (edit_note->note <= 0) {
                 edit_note->note = last_edit.note;
                 edit_note->duty = last_edit.duty;
@@ -1327,6 +1402,7 @@ int main(int argc, char *argv[])
 
         /* increase note */
         case 'l':
+            take_undo_snapshot(page);
             if (edit_note->note <= 0) {
                 edit_note->note = last_edit.note;
                 edit_note->duty = last_edit.duty;
@@ -1340,6 +1416,7 @@ int main(int argc, char *argv[])
 
         /* jump up an octave */
         case 'L':
+            take_undo_snapshot(page);
             if (edit_note->note <= 0) {
                 edit_note->note = last_edit.note;
                 edit_note->duty = last_edit.duty;
@@ -1354,11 +1431,13 @@ int main(int argc, char *argv[])
 
         /* kill a sustained note */
         case 'x':
+            take_undo_snapshot(page);
             edit_note->note = -1;
             break;
 
         /* delete current page */
         case 'X':
+            take_undo_snapshot(page);
             if (num_pages > 1) {
                 num_pages--;
 
@@ -1415,6 +1494,7 @@ int main(int argc, char *argv[])
             break;
 
         case '[':
+            take_undo_snapshot(page);
             if (edit_note->duty < 6)
                 edit_note->duty++;
             last_edit.note = edit_note->note;
@@ -1422,6 +1502,7 @@ int main(int argc, char *argv[])
             break;
 
         case ']':
+            take_undo_snapshot(page);
             if (edit_note->duty > 1)
                 edit_note->duty--;
             last_edit.note = edit_note->note;
@@ -1429,6 +1510,7 @@ int main(int argc, char *argv[])
             break;
 
         case '.':
+            take_undo_snapshot(page);
             edit_note->note = last_edit.note;
             edit_note->duty = last_edit.duty;
             break;
@@ -1465,21 +1547,21 @@ int main(int argc, char *argv[])
             break;
 
         case 'i':
-            insert_lines(page, current_line, command_multiplier);
+            insert_lines(page, current_line, command_multiplier, 1);
             draw_page_num();
             tb_printf("Inserted %d new %s", command_multiplier, command_multiplier == 1 ? "line" : "lines");
             command_multiplier = 0;
             break;
 
         case 'd':
-            delete_lines(page, current_line, command_multiplier);
+            delete_lines(page, current_line, command_multiplier, 1);
             draw_page_num();
             tb_printf("Deleted %d %s", command_multiplier, command_multiplier == 1 ? "line" : "lines");
             command_multiplier = 0;
             break;
 
         case 'v':
-            paste_lines(page, current_line, command_multiplier);
+            do_paste_lines(page, current_line, command_multiplier);
             command_multiplier = 0;
             draw_page_num();
             break;
