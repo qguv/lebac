@@ -153,6 +153,13 @@ int audio_child(int * const pid_p, const char * const filename)
     return pipefds[1];
 }
 
+static struct page_t *find_first_page(struct page_t *page)
+{
+    while (page->prev != NULL)
+        page = page->prev;
+    return page;
+}
+
 /* call audio with the output of audio_child to play audio. you need a new
  * audio_child pipe each time. we will close the audio pipe for you when it's
  * done playing.
@@ -182,8 +189,7 @@ void audio(int audio_pipe, char just_one_page)
     /* scroll back to the first page */
     struct page_t *playing_page = page;
     if (!just_one_page)
-        while (playing_page->prev != NULL)
-            playing_page = playing_page->prev;
+        playing_page = find_first_page(playing_page);
 
     while (playing_page) {
         for (int step = 0; step < 16; step++) {
@@ -565,7 +571,7 @@ static void paste_lines(struct page_t *page, int line_within_page, int count)
 
 char find_first_note(const struct page_t **searching_page, char *line)
 {
-    /* rewind to the first page */
+    /* rewind to the first page (would use find_first_page(), but const is being a jerk.) */
     while((*searching_page)->prev)
         *searching_page = (*searching_page)->prev;
 
@@ -704,10 +710,7 @@ void save(char *songfile)
         return;
     }
 
-    /* rewind to the first page */
-    struct page_t *saving_page = page;
-    while (saving_page->prev)
-        saving_page = saving_page->prev;
+    struct page_t *saving_page = find_first_page(page);
 
     write(fd, &magic, sizeof(magic));
     write(fd, &tempo, 1);
@@ -798,8 +801,7 @@ void load(char *songfile)
             close(fd);
 
             /* free existing pages of pattern memory */
-            while (page->prev)
-                page = page->prev;
+            page = find_first_page(page);
             while (page) {
                 tmp_page = page->next;
                 free(page);
@@ -808,8 +810,7 @@ void load(char *songfile)
 
             /* load and seek to first page */
             page = load_page;
-            while (page->prev)
-                page = page->prev;
+            page = find_first_page(page);
             page_num = 1;
             num_pages = num_load_pages;
 
