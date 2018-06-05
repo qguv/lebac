@@ -3,7 +3,7 @@ ERROR_OPTS=-Wall -Wpedantic -Wextra -Werror -g
 LIBS=-Ibuild/tables -Itermbox/src -Lbuild/termbox/src -ltermbox -lrt
 OUTPUT=build/lebac
 
-SINTABLE_LENGTH=128
+SINTABLE_LENGTH=16
 SAMPLE_RATE=38000
 
 build/lebac: build/termbox/src/libtermbox.a build/tables/sinhop.h build/tables/sintable.h src/*.c src/*.h Makefile
