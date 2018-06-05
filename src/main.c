@@ -647,25 +647,27 @@ char badge_export(const char *headerfile)
         return 1;
     }
 
-    const char starttype[] = "const static char notedata_";
-    write(fd, &starttype, sizeof(starttype) - 1);
+    dprintf(fd, "const static short notedata_");
 
     int varname_len = varname_from_filename(&headerfile);
     write(fd, headerfile, varname_len);
 
-    const char endtype[] = "[] = {\n    ";
-    write(fd, &endtype, sizeof(endtype) - 1);
+    const int samples_per_step = RATE * 15 / tempo;
+    dprintf(fd, "_speed = %hd;\n\nconst static char notedata_", samples_per_step);
+    write(fd, headerfile, varname_len);
+    dprintf(fd, "[] = {\n    ");
+
     char suppress_separator = 1;
+
+    int num_notes = 0;
 
     float hop[2] = {0.0, 0.0};
     while (exporting_page) {
 
-        if (suppress_separator) {
+        if (suppress_separator)
             suppress_separator = 0;
-        } else {
-            const char separator[] = ",\n    ";
-            write(fd, separator, sizeof(separator) - 1);
-        }
+        else
+            dprintf(fd, ",\n    ");
 
         for (int channel = 0; channel < 2; channel++) {
 
@@ -676,19 +678,18 @@ char badge_export(const char *headerfile)
                 hop[channel] = wavehop_table[(int) note];
             }
 
-            char floatbuf[13];
-            snprintf(floatbuf, sizeof(floatbuf), "0x%02hhx, 0x%02hhx, ", ((unsigned char *) &hop[channel])[0], ((unsigned char *) &hop[channel])[1]);
-            write(fd, floatbuf, sizeof(floatbuf) - 1);
+            dprintf(fd, "0x%02hhx, 0x%02hhx, ", ((unsigned char *) &hop[channel])[0], ((unsigned char *) &hop[channel])[1]);
         }
 
-        char charbuf[5];
         char length = note_length(&exporting_page, &line);
-        snprintf(charbuf, sizeof(charbuf), "0x%02hhx", length);
-        write(fd, charbuf, sizeof(charbuf) - 1);
+        dprintf(fd, "0x%02hhx", length);
+
+        num_notes++;
     }
 
-    const char end[] = "\n};\n";
-    write(fd, &end, sizeof(end) - 1);
+    dprintf(fd, "\n};\n\nconst static short notedata_");
+    write(fd, headerfile, varname_len);
+    dprintf(fd, "_notes = %hd;\n", num_notes);
 
     close(fd);
 
