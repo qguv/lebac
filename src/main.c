@@ -1058,10 +1058,15 @@ int main(int argc, char *argv[])
 
         /* export song to wavfile */
         case 'W':
-            tb_printf("exported to /tmp/out.wav");
+            err = get_filename("export wav to");
+            if (err) {
+                tb_printf("wav export cancelled");
+                break;
+            }
+            tb_printf("exported to %s", filename);
             if (!fork()) {
                 /* TODO: send SIGTERM when parent dies */
-                int audio_pipe = audio_child(NULL, "/tmp/out.wav");
+                int audio_pipe = audio_child(NULL, filename);
                 audio(audio_pipe, 0);
                 exit(0);
             }
