@@ -1,2 +1,2 @@
 #!/bin/bash
-mkdir -p songs && make && build/lebac
+mkdir -p songs && make && build/lebac $@
