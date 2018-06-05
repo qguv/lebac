@@ -92,7 +92,8 @@ Press '?' for a list of keybindings. Press Ctrl-C twice to exit.
 
 ## Thanks
 
-- [**Stephen M Cameron**](https://github.com/smcameron) for [many features and build improvements](https://github.com/qguv/lebac/commits?author=smcameron)
+- [**Stephen Cameron**](https://github.com/smcameron) for [many features and build improvements](https://github.com/qguv/lebac/commits?author=smcameron)
 - [**Carter Hall**](https://github.com/cahruhr) for signal processing theory and help working around embedded system constraints
+- [**Dustin Firebaugh**](https://github.com/dfirebaugh) for writing bangers!
 - [**Jonathan Lundquist**](https://github.com/jonathan46000) for project management and patience
-- **Paul** for embedded systems expertise and an example implementation of an audio asset management library
+- [**Paul Bruggeman**](https://github.com/paulbruggeman) for embedded systems expertise and the audio asset management library on the badge
