@@ -26,7 +26,7 @@ char *helptext[][2] = {
     {"=/+", "increase tempo by one / ten"},
     {"S/D", "save / load song from file"},
     {"W", "export audio to wavfile"},
-    {"", ""},
+    {">", "export to badge notefile"},
     {"", ""},
     {"program", ""},
     {"=======", ""},

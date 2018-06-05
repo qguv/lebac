@@ -563,10 +563,140 @@ static void paste_lines(struct page_t *page, int line_within_page, int count)
     tb_printf("Pasted %d %s", total, total == 1 ? "line" : "lines");
 }
 
+char find_first_note(const struct page_t **searching_page, char *line)
+{
+    /* rewind to the first page */
+    while((*searching_page)->prev)
+        *searching_page = (*searching_page)->prev;
+
+    while (*searching_page) {
+        for (; *line < 16; (*line)++) {
+            /* TODO: think about duty here */
+            if ((*searching_page)->notes[(int) *line][0].note || (*searching_page)->notes[(int) *line][1].note) {
+                return 0;
+            }
+        }
+
+        *searching_page = (*searching_page)->next;
+        *line = 0;
+    }
+    return 1;
+}
+
+char note_length(const struct page_t **searching_page, char *line)
+{
+    (*line)++;
+    int length = 1;
+
+    while (*searching_page)
+    {
+        for (; *line < 16; (*line)++) {
+            if ((*searching_page)->notes[(int) *line][0].note || (*searching_page)->notes[(int) *line][1].note)
+                return length;
+            length++;
+        }
+
+        *searching_page = (*searching_page)->next;
+        *line = 0;
+    }
+
+    return length;
+}
+
+/* moves s to the character after the last slash and returns the number of
+ * characters between the slash and the next dot */
+int varname_from_filename(const char **instr)
+{
+    int last_slash = -1, last_dot = -1;
+
+    char c;
+    int i;
+    for (i = 0; (c = (*instr)[i]); i++) {
+        switch (c) {
+        case '/':
+            last_slash = i;
+            last_dot = -1;
+            break;
+        case '.':
+            last_dot = i;
+            break;
+        }
+    }
+
+    if (last_dot == -1)
+        last_dot = i;
+
+    *instr += last_slash + 1;
+    return last_dot - last_slash - 1;
+}
+
+char badge_export(const char *headerfile)
+{
+    int fd = open(headerfile, O_CREAT | O_RDWR | O_TRUNC, 0600);
+    if (fd < 0) {
+        tb_printf("%s: Can't open file: %s\n", headerfile, strerror(errno));
+        return 1;
+    }
+
+    /* rewind to the first page */
+    const struct page_t *exporting_page = page;
+    char line = 0;
+    char err = find_first_note(&exporting_page, &line);
+    if (err) {
+        tb_printf("no notes to export!");
+        return 1;
+    }
+
+    const char starttype[] = "const static char notedata_";
+    write(fd, &starttype, sizeof(starttype) - 1);
+
+    int varname_len = varname_from_filename(&headerfile);
+    write(fd, headerfile, varname_len);
+
+    const char endtype[] = "[] = {\n    ";
+    write(fd, &endtype, sizeof(endtype) - 1);
+    char suppress_separator = 1;
+
+    float hop[2] = {0.0, 0.0};
+    while (exporting_page) {
+
+        if (suppress_separator) {
+            suppress_separator = 0;
+        } else {
+            const char separator[] = ",\n    ";
+            write(fd, separator, sizeof(separator) - 1);
+        }
+
+        for (int channel = 0; channel < 2; channel++) {
+
+            char note = exporting_page->notes[(int) line][channel].note;
+            if (note < 0) {
+                hop[channel] = 0;
+            } else if (note > 0) {
+                hop[channel] = wavehop_table[(int) note];
+            }
+
+            char floatbuf[13];
+            snprintf(floatbuf, sizeof(floatbuf), "0x%02hhx, 0x%02hhx, ", ((unsigned char *) &hop[channel])[0], ((unsigned char *) &hop[channel])[1]);
+            write(fd, floatbuf, sizeof(floatbuf) - 1);
+        }
+
+        char charbuf[5];
+        char length = note_length(&exporting_page, &line);
+        snprintf(charbuf, sizeof(charbuf), "0x%02hhx", length);
+        write(fd, charbuf, sizeof(charbuf) - 1);
+    }
+
+    const char end[] = "\n};\n";
+    write(fd, &end, sizeof(end) - 1);
+
+    close(fd);
+
+    return 0;
+}
+
 void save(char *songfile)
 {
-    /* TODO allow filenames to be specified at load */
-
     int fd = open(songfile, O_CREAT | O_RDWR | O_TRUNC, 0600);
     if (fd < 0) {
         tb_printf("%s: Can't open file: %s\n", songfile, strerror(errno));
@@ -575,7 +705,7 @@ void save(char *songfile)
 
     /* rewind to the first page */
     struct page_t *saving_page = page;
-    while (saving_page->prev != NULL)
+    while (saving_page->prev)
         saving_page = saving_page->prev;
 
     write(fd, &magic, sizeof(magic));
@@ -607,7 +737,6 @@ void save(char *songfile)
 
 void load(char *songfile)
 {
-    /* TODO allow filenames to be specified at load */
     int fd = open(songfile, O_RDONLY);
     if (fd < 0) {
         tb_printf("%s: Cannot open: %s", songfile, strerror(errno));
@@ -859,7 +988,8 @@ char get_filename(const char * const prompt)
             case TB_KEY_BACKSPACE2:
                 dcell.ch = ' ';
                 tb_put_cell(xpos - 1, 21, &dcell);
-                filename[i - 1] = 0;
+                if (i > 0)
+                    filename[i - 1] = 0;
                 continue;
 
             case TB_KEY_ENTER:
@@ -1318,6 +1448,18 @@ int main(int argc, char *argv[])
                 break;
             }
             save(filename);
+            break;
+
+        case '>':
+            err = get_filename("export badge asset to");
+            if (err) {
+                tb_printf("export cancelled");
+                break;
+            }
+            err = badge_export(filename);
+            if (!err) {
+                tb_printf("exported to %s", filename);
+            }
             break;
 
         case 'i':

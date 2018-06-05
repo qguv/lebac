@@ -16,3 +16,7 @@ badge audio composition files are formatted in the following way:
 ## wav files
 
 each rendered `.wav` corresponds with a matching `.bac` midi-like file. we use an imbalanced neutralizing pulse wave algorithm (push for an entry, sit for ten entries, pull for an entry, sit for four entries). for more information on how the audio is generated, see README.md in the top-level of this repository.
+
+## bac asset notefile
+
+notefiles are C header files meant to be played on the badge. you export these, move them into the badge source, add them to the assets list, and recompile the badge. your app then calls the asset.
