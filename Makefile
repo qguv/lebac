@@ -3,10 +3,10 @@ ERROR_OPTS=-Wall -Wpedantic -Wextra -Werror -g
 LIBS=-Ibuild/tables -Itermbox/src -Lbuild/termbox/src -ltermbox -lrt
 OUTPUT=build/lebac
 
-SINTABLE_LENGTH=16
+WAVETABLE_LENGTH=16
 SAMPLE_RATE=38000
 
-build/lebac: build/termbox/src/libtermbox.a build/tables/sinhop.h build/tables/sintable.h src/*.c src/*.h Makefile
+build/lebac: build/termbox/src/libtermbox.a build/tables/wavehop.h src/*.c src/*.h Makefile
 	${CC} -static -D_POSIX_C_SOURCE=199309L -D_DEFAULT_SOURCE -std=c11 src/main.c ${LIBS} ${ERROR_OPTS} -o $@
 
 build/termbox/src/libtermbox.a: Makefile
@@ -19,12 +19,9 @@ build/termbox/src/libtermbox.a: Makefile
 	./waf \
 	)
 
-build/tables/sinhop.h: scripts/mksinhop.py
+build/tables/wavehop.h: scripts/mkwavehop.py
 	mkdir -p build/tables
-	python3 $< $(SINTABLE_LENGTH) $(SAMPLE_RATE) > $@ || (rm $@ && false)
-
-build/tables/sintable.h: src/sintable.h
-	cp -f src/sintable.h build/tables
+	python3 $< $(WAVETABLE_LENGTH) $(SAMPLE_RATE) > $@ || (rm $@ && false)
 
 clean:
 	rm -rf build

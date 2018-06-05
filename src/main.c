@@ -3,8 +3,8 @@
 
 #include "notes.h"
 #include "help.h"
-#include "sinhop.h"
-#include "sintable.h"
+#include "wavehop.h"
+#include "wavetable.h"
 
 #include <termbox.h>
 
@@ -197,7 +197,7 @@ void audio(int audio_pipe, char just_one_page)
 
                 if (note > 0) {
                     play[channel] = 1;
-                    hop[channel] = sinhop_table[(int) note];
+                    hop[channel] = wavehop_table[(int) note];
                     cycle_pos[channel] = 0;
                 } else if (note < 0) {
                     play[channel] = 0;
@@ -215,11 +215,11 @@ void audio(int audio_pipe, char just_one_page)
                         continue;
                     }
 
-                    sample += sin_table[(int) cycle_pos[channel]];
+                    sample += wave_table[(int) cycle_pos[channel]];
 
                     cycle_pos[channel] += hop[channel];
-                    if (cycle_pos[channel] >= ALEN(sin_table))
-                        cycle_pos[channel] -= ALEN(sin_table);
+                    if (cycle_pos[channel] >= ALEN(wave_table))
+                        cycle_pos[channel] -= ALEN(wave_table);
                 }
 
                 /* at this point, we're in two-and-a-half bit space: [-2, -1, 0, 1, 2 ]

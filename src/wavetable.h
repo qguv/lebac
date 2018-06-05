@@ -1,6 +1,6 @@
 #include <stdint.h>
 
-static int16_t sin_table[16] = {
+static int16_t wave_table[16] = {
     16383,
     0,
     0,
