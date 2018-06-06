@@ -427,7 +427,7 @@ void draw_help(void)
 
 void draw_not_quit(void)
 {
-    tb_printf("The quit key is ctrl-c");
+    tb_printf("the quit key is ctrl-c");
 }
 
 static void bump_lines_up_one(struct page_t *page, int line_within_page)
@@ -566,7 +566,7 @@ static void do_yank_lines(struct page_t *page, int line_within_page, int count)
     if (count == 0)
         count = 1;
     yank_lines(page, line_within_page, count, &yank_buffer, &yank_buffer_size);
-    tb_printf("Yanked %d %s", count, count == 1 ? "line" : "lines");
+    tb_printf("yanked %d %s", count, count == 1 ? "line" : "lines");
 }
 
 static void paste_lines(struct page_t *page, int line_within_page, int count,
@@ -605,7 +605,7 @@ static void paste_lines(struct page_t *page, int line_within_page, int count,
             }
         }
     }
-    tb_printf("Pasted %d %s", total, total == 1 ? "line" : "lines");
+    tb_printf("pasted %d %s", total, total == 1 ? "line" : "lines");
 }
 
 static void do_paste_lines(struct page_t *page, int line_within_page, int count)
@@ -618,7 +618,7 @@ static void do_undo(struct page_t *page)
     int count;
 
     if (num_undo_buffers <= 0) {
-        tb_printf("Can't undo, already at oldest preserved state.");
+        tb_printf("nothing to undo");
         return;
     }
     /* Delete everything */
@@ -633,7 +633,7 @@ static void do_undo(struct page_t *page)
     undo_buffer[num_undo_buffers - 1] = NULL;
     undo_buffer_size[num_undo_buffers - 1] = 0;
     num_undo_buffers--;
-    tb_printf("Undo. %d older states remain preserved", num_undo_buffers);
+    tb_printf("undo (%d left)", num_undo_buffers);
 }
 
 char find_first_note(const struct page_t **searching_page, char *line)
@@ -707,7 +707,7 @@ char badge_export(const char *headerfile)
 {
     int fd = open(headerfile, O_CREAT | O_RDWR | O_TRUNC, 0600);
     if (fd < 0) {
-        tb_printf("%s: Can't open file: %s\n", headerfile, strerror(errno));
+        tb_printf("%s: can't open file: %s\n", headerfile, strerror(errno));
         return 1;
     }
 
@@ -773,7 +773,7 @@ void save(char *songfile)
 {
     int fd = open(songfile, O_CREAT | O_RDWR | O_TRUNC, 0600);
     if (fd < 0) {
-        tb_printf("%s: Can't open file: %s\n", songfile, strerror(errno));
+        tb_printf("%s: can't open file: %s\n", songfile, strerror(errno));
         return;
     }
 
@@ -810,7 +810,7 @@ void load(char *songfile)
 {
     int fd = open(songfile, O_RDONLY);
     if (fd < 0) {
-        tb_printf("%s: Cannot open: %s", songfile, strerror(errno));
+        tb_printf("%s: cannot open: %s", songfile, strerror(errno));
         return;
     }
 
@@ -1537,7 +1537,7 @@ int main(int argc, char *argv[])
         case '>':
             err = get_filename("export badge asset to");
             if (err) {
-                tb_printf("export cancelled");
+                tb_printf("asset export cancelled");
                 break;
             }
             err = badge_export(filename);
@@ -1549,14 +1549,14 @@ int main(int argc, char *argv[])
         case 'i':
             insert_lines(page, current_line, command_multiplier, 1);
             draw_page_num();
-            tb_printf("Inserted %d new %s", command_multiplier, command_multiplier == 1 ? "line" : "lines");
+            tb_printf("inserted %d new %s", command_multiplier, command_multiplier == 1 ? "line" : "lines");
             command_multiplier = 0;
             break;
 
         case 'd':
             delete_lines(page, current_line, command_multiplier, 1);
             draw_page_num();
-            tb_printf("Deleted %d %s", command_multiplier, command_multiplier == 1 ? "line" : "lines");
+            tb_printf("deleted %d %s", command_multiplier, command_multiplier == 1 ? "line" : "lines");
             command_multiplier = 0;
             break;
 
