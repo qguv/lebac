@@ -751,7 +751,8 @@ char badge_export(const char *headerfile)
                 hop[channel] = wavehop_table[(int) note];
             }
 
-            dprintf(fd, "0x%02hhx, 0x%02hhx, ", ((unsigned char *) &hop[channel])[0], ((unsigned char *) &hop[channel])[1]);
+            for (int i = 0; i < 4; i++)
+                dprintf(fd, "0x%02hhx, ", ((unsigned char *) &hop[channel])[i]);
         }
 
         char length = note_length(&exporting_page, &line);
