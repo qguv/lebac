@@ -720,13 +720,13 @@ char badge_export(const char *headerfile)
         return 1;
     }
 
-    dprintf(fd, "const static short notedata_");
+    dprintf(fd, "#define NOTEDATA_");
 
     int varname_len = varname_from_filename(&headerfile);
     write(fd, headerfile, varname_len);
 
     const int samples_per_step = RATE * 15 / tempo;
-    dprintf(fd, "_speed = %hd;\n\nconst static char notedata_", samples_per_step);
+    dprintf(fd, "_SPEED %hd\n\nconst static char notedata_", samples_per_step);
     write(fd, headerfile, varname_len);
     dprintf(fd, "[] = {\n    ");
 
@@ -760,9 +760,9 @@ char badge_export(const char *headerfile)
         num_notes++;
     }
 
-    dprintf(fd, "\n};\n\nconst static short notedata_");
+    dprintf(fd, "\n};\n\n#define NOTEDATA_");
     write(fd, headerfile, varname_len);
-    dprintf(fd, "_notes = %hd;\n", num_notes);
+    dprintf(fd, "_NOTES %hd\n", num_notes);
 
     close(fd);
 
