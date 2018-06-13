@@ -16,7 +16,7 @@
 #include <unistd.h> // pipe, fork, close, dup, exec, ...
 #include <string.h> // strerror()
 #include <errno.h> // errno
-#include <stdarg.h>
+#include <stdarg.h> // vsnprintf
 #include <dirent.h> // readdir
 
 /* badge audio rate */
@@ -726,7 +726,7 @@ char badge_export(const char *headerfile)
     write(fd, headerfile, varname_len);
 
     const int samples_per_step = RATE * 15 / tempo;
-    dprintf(fd, "_SPEED %hd\n\nconst static char notedata_", samples_per_step);
+    dprintf(fd, "_SPEED %d\n\nconst static char notedata_", samples_per_step);
     write(fd, headerfile, varname_len);
     dprintf(fd, "[] = {\n    ");
 
@@ -763,7 +763,7 @@ char badge_export(const char *headerfile)
 
     dprintf(fd, "\n};\n\n#define NOTEDATA_");
     write(fd, headerfile, varname_len);
-    dprintf(fd, "_NOTES %hd\n", num_notes);
+    dprintf(fd, "_NOTES %d\n", num_notes);
 
     close(fd);
 
