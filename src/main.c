@@ -1,11 +1,15 @@
 /* le bac: the badge audio composer
  * all bugs are qguv's fault */
 
-#include "notes.h"
+#include "disk.h"
 #include "help.h"
-#include "wavehop.h"
+#include "notes.h"
 #include "wavetable.h"
 
+/* generated at build time */
+#include "wavehop.h"
+
+/* terminal library; a modern curses */
 #include <termbox.h>
 
 #include <fcntl.h> // open()
@@ -676,33 +680,6 @@ char note_length(const struct page_t **searching_page, char *line)
     return length;
 }
 
-/* moves s to the character after the last slash and returns the number of
- * characters between the slash and the next dot */
-int varname_from_filename(const char **instr)
-{
-    int last_slash = -1, last_dot = -1;
-
-    char c;
-    int i;
-    for (i = 0; (c = (*instr)[i]); i++) {
-        switch (c) {
-        case '/':
-            last_slash = i;
-            last_dot = -1;
-            break;
-        case '.':
-            last_dot = i;
-            break;
-        }
-    }
-
-    if (last_dot == -1)
-        last_dot = i;
-
-    *instr += last_slash + 1;
-    return last_dot - last_slash - 1;
-}
-
 char badge_export(const char *headerfile)
 {
     int fd = open(headerfile, O_CREAT | O_RDWR | O_TRUNC, 0600);
@@ -1103,6 +1080,7 @@ int main(int argc, char *argv[])
 
     struct timespec tempo_input, last_tempo_input;
     last_tempo_input.tv_sec = 0;
+    last_tempo_input.tv_nsec = 0;
 
     struct tb_event event;
 
@@ -1145,8 +1123,9 @@ int main(int argc, char *argv[])
 
         if (global_mode == SEQUENCER) {
             draw_note_columns(column);
-            edit_note = (column == LEFT) ? &page->notes[current_line][0] : &page->notes[current_line][1];
         }
+
+        edit_note = (column == LEFT) ? &page->notes[current_line][0] : &page->notes[current_line][1];
 
         tb_present();
 
