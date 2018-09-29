@@ -25,8 +25,13 @@ build/termbox/src/libtermbox.a: Makefile
 	mkdir -p build
 	( \
 	cd termbox &&\
+	echo "patching termbox waf version" &&\
+	( \
+		./waf configure --out=../build/termbox &>/dev/null; \
+		sed -i '/raise StopIteration/d' .waf*/waflib/Node.py \
+	) && \
 	echo "configuring termbox" &&\
-	./waf configure --out=../build/termbox &&\
+	./waf configure --out=../build/termbox &>/dev/null &&\
 	echo "building termbox" &&\
 	./waf \
 	)
@@ -36,4 +41,4 @@ build/tables/wavehop.h: scripts/mkwavehop.py
 	python3 $< $(WAVETABLE_LENGTH) $(SAMPLE_RATE) > $@ || (rm $@ && false)
 
 clean:
-	rm -rf build
+	rm -rf build termbox/.waf*
