@@ -5,6 +5,7 @@
 #include "help.h"
 #include "notes.h"
 #include "wavetable.h"
+#include "filters.h"
 
 /* generated at build time */
 #include "wavehop.h"
@@ -212,6 +213,9 @@ void audio(int audio_pipe, char just_one_page)
     if (!just_one_page)
         playing_page = find_first_page(playing_page);
 
+    struct lowpass_state lowpass_state;
+    lowpass_init(&lowpass_state, 0.86);
+
     while (playing_page) {
         for (int step = 0; step < 16; step++) {
             for (int channel = 0; channel < 2; channel++) {
@@ -234,11 +238,9 @@ void audio(int audio_pipe, char just_one_page)
 
             for (int i = 0; i < samples_per_step; i++) {
                 int16_t sample = 0;
-                char lower_threshhold = 0;
                 for (int channel = 0; channel < 2; channel++) {
 
                     if (!play[channel]) {
-                        lower_threshhold = 1;
                         continue;
                     }
 
@@ -249,33 +251,8 @@ void audio(int audio_pipe, char just_one_page)
                         cycle_pos[channel] -= ALEN(wave_table);
                 }
 
-                /* at this point, we're in two-and-a-half bit space: [-2, -1, 0, 1, 2 ]
-                 *
-                 *            lpnote_level
-                 *           | -1   0   1
-                 *         --+------------
-                 * note_  -1 | -2  -1   0
-                 * level   0 | -1   0   1
-                 *         1 |  0   1   2
-                 *
-                 * where 2 and 1 represent INT16_MAX and INT16_MAX/2, respectively
-                 *
-                 * the H-bridge + buzzer combo can only drive the speaker forward
-                 * (1), backward (-1), or toward a rest state (0). if requested, we
-                 * can emulate how that would sound by slamming all positive
-                 * numbers up to INT16_MAX and all negative numbers down to
-                 * INT16_MIN.
-                 */
                 if (emulate_shitty_badge_audio) {
-                    sample = lower_threshhold ? (
-                        (sample < -15250) ? INT16_MIN >> MERCY :
-                        (sample > 15250) ? INT16_MAX >> MERCY :
-                        0
-                    ) : (
-                        (sample < -14000) ? INT16_MIN >> MERCY :
-                        (sample > 14000) ? INT16_MAX >> MERCY :
-                        0
-                    );
+                    sample = lowpass(&lowpass_state, sample);
                 }
 
                 write(audio_pipe, (char *) &sample, sizeof(sample));

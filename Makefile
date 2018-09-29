@@ -7,7 +7,7 @@ INCLUDE = -Isrc -Ibuild/tables -Itermbox/src
 LIBS = -Lbuild/termbox/src -ltermbox -lrt
 
 # source
-OBJ = build/obj/disk.o
+OBJ = build/obj/disk.o build/obj/filters.o
 SOURCEOPTS = -D_POSIX_C_SOURCE=199309L -D_DEFAULT_SOURCE -std=c11
 
 # wave script options
