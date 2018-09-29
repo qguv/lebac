@@ -147,11 +147,11 @@ int audio_child(int * const pid_p, const char * const filename)
         dup2(pipefds[0], STDIN_FILENO);
         close(pipefds[0]);
         if (filename) {
-            execlp("out123", "out123", "--mono", "--encoding", "s16", "--rate", "38000", "--wav", filename, (char *) NULL);
             execlp("aplay", "aplay", "--quiet", "-c", "1", "-f", "S16_LE", "-r", "38000", filename, (char *) NULL);
+            execlp("out123", "out123", "--mono", "--encoding", "s16", "--rate", "38000", "--wav", filename, (char *) NULL);
         } else {
-            execlp("out123", "out123", "--mono", "--encoding", "s16", "--rate", "38000", (char *) NULL);
             execlp("aplay", "aplay", "--quiet", "-c", "1", "-f", "S16_LE", "-r", "38000", (char *) NULL);
+            execlp("out123", "out123", "--mono", "--encoding", "s16", "--rate", "38000", (char *) NULL);
         }
     }
     if (pid_p != NULL)
