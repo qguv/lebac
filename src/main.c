@@ -91,7 +91,7 @@ static int undo_buffer_size[MAX_UNDO_BUFFERS] = { 0 };
 static int num_undo_buffers = 0;
 
 /* crunch into 1.5 bit space? */
-char emulate_shitty_badge_audio = 1;
+char emulate_shitty_badge_audio = 0;
 
 /* default colors */
 struct tb_cell dcell;
