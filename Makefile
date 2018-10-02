@@ -27,11 +27,11 @@ build/termbox/src/libtermbox.a: Makefile
 	cd termbox &&\
 	echo "patching termbox waf version" &&\
 	( \
-		./waf configure --out=../build/termbox &>/dev/null; \
+		./waf configure --out=../build/termbox > /dev/null 2>&1; \
 		sed -i '/raise StopIteration/d' .waf*/waflib/Node.py \
 	) && \
 	echo "configuring termbox" &&\
-	./waf configure --out=../build/termbox &>/dev/null &&\
+	./waf configure --out=../build/termbox > /dev/null 2>&1 &&\
 	echo "building termbox" &&\
 	./waf \
 	)
