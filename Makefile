@@ -1,5 +1,5 @@
 CC = gcc
-ERROR_OPTS = -Wall -Wpedantic -Wextra -Werror
+ERROR_OPTS = -Wall -Wpedantic -Wextra
 
 # build options
 OUTCONFIG = -static -Os
@@ -24,7 +24,7 @@ build/obj/%.o: src/%.c
 build/termbox/src/libtermbox.a: Makefile
 	mkdir -p build
 	( \
-	cd termbox &&\
+	cd termbox ;\
 	echo "patching termbox waf version" &&\
 	( \
 		./waf configure --out=../build/termbox &>/dev/null; \
