@@ -26,6 +26,7 @@ char *helptext[][2] = {
     {"p/P", "play this pattern / whole song"},
     {"-/_", "decrease tempo by one / ten"},
     {"=/+", "increase tempo by one / ten"},
+    {"T", "tap tempo"},
     {"S/D", "save / load song from file"},
     {"W", "export audio to wavfile"},
     {">", "export to badge notefile"},
