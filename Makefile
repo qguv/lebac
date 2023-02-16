@@ -1,5 +1,5 @@
 CC = gcc
-ERROR_OPTS = -Wall -Wpedantic -Wextra
+ERROR_OPTS = -Wall -Wpedantic -Wextra -Werror
 
 # build options
 OUTCONFIG = -static -Os
